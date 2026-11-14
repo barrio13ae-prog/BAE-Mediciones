@@ -1,7 +1,7 @@
 // Informes DT-6650 — funcionamiento sin conexión
-const VERSION = 'dt6650-v1';
+const VERSION = 'dt6650-v2';
 const APP = ['./', './index.html', './manifest.webmanifest',
-  './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
+  './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 const LIBS = [
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
