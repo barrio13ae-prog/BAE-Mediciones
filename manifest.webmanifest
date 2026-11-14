@@ -1,0 +1,17 @@
+{
+  "name": "Informes DT-6650",
+  "short_name": "DT-6650",
+  "description": "Convierte las mediciones del CEM DT-6650 en imágenes de pantalla e informes PDF.",
+  "lang": "es-AR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f5f7",
+  "theme_color": "#1f3fa6",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,42 @@
+INFORMES DT-6650 — App instalable para Android y iPhone
+=========================================================
+
+Contenido de esta carpeta
+- index.html ............ la app
+- manifest.webmanifest .. nombre, colores e íconos para instalarla
+- sw.js ................. permite usarla sin conexión
+- icons/ ................ íconos de la app
+
+Subirla gratis a GitHub Pages (se hace una sola vez)
+---------------------------------------------------
+1. Creá una cuenta gratis en https://github.com (si no tenés).
+2. Arriba a la derecha: "+" > "New repository".
+   - Repository name: informes-dt6650
+   - Marcá "Public" y tocá "Create repository".
+3. En el repositorio nuevo: "uploading an existing file" (o "Add file" > "Upload files").
+   Arrastrá TODO el contenido de esta carpeta (index.html, manifest.webmanifest,
+   sw.js y la carpeta icons). Abajo tocá "Commit changes".
+4. Andá a "Settings" > "Pages". En "Branch" elegí "main" y carpeta "/ (root)". "Save".
+5. En uno o dos minutos la app queda en:
+   https://TU-USUARIO.github.io/informes-dt6650/
+
+Instalarla en el celular
+------------------------
+- Android (Chrome): abrí el link > menú (tres puntos) > "Instalar app"
+  o "Agregar a pantalla principal".
+- iPhone (Safari): abrí el link > botón Compartir > "Agregar a inicio".
+- PC (Chrome o Edge): ícono de instalar en la barra de direcciones.
+
+Después de abrirla una vez con internet, funciona sin conexión.
+
+Actualizarla
+------------
+Cuando haya una versión nueva, subí el index.html nuevo al mismo repositorio
+(reemplaza al anterior). La app se actualiza sola la próxima vez que la abras
+con internet.
+
+Privacidad
+----------
+Las mediciones y los datos del informe se procesan solo en tu dispositivo:
+no se suben a ningún servidor. El repositorio público contiene únicamente
+el código de la app, no tus mediciones.

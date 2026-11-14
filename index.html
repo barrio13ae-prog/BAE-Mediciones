@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Informes DT-6650</title>
+<meta name="theme-color" content="#1f3fa6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Informes DT-6650">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --ink:#1b1f24; --muted:#6b7280; --line:#e3e6ea;
+    --accent:#1f4fd1; --accent-ink:#fff; --ok:#137a3a; --ok-bg:#e5f5ea; --bad:#b42318; --bad-bg:#fdecea;
+    --neutral-bg:#eef0f3;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#14161a; --card:#1d2026; --ink:#e8eaed; --muted:#9aa1ab; --line:#2d3139;
+      --accent:#5b8cff; --ok:#5fd38a; --ok-bg:#16301f; --bad:#ff8a80; --bad-bg:#3a1b1a; --neutral-bg:#262a31; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45}
+  header{padding:22px 20px 8px;max-width:1100px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px}
+  header p{margin:0;color:var(--muted)}
+  main{max-width:1100px;margin:0 auto;padding:12px 20px 60px;display:grid;gap:18px}
+  section.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+  section.card h2{font-size:16px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .step{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:700}
+  .drop{border:2px dashed var(--line);border-radius:10px;padding:26px;text-align:center;cursor:pointer;transition:.15s}
+  .drop.over,.drop:hover{border-color:var(--accent);background:var(--neutral-bg)}
+  .drop strong{display:block;font-size:16px;margin-bottom:4px}
+  .drop span{color:var(--muted)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button{font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 14px;cursor:pointer}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.link{border:none;background:none;color:var(--accent);padding:4px 0}
+  details summary{cursor:pointer;color:var(--accent);font-weight:600;margin-top:12px}
+  textarea,input,select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+  textarea{font-family:ui-monospace,Consolas,monospace;font-size:13px;min-height:110px}
+  h3.sub{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:16px 0 8px;font-weight:600}
+  #reportForm h3.sub:first-child{margin-top:0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  label{display:block;font-size:13px;color:var(--muted);font-weight:500}
+  label > input,label > select,label > textarea{margin-top:4px}
+  .files{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .chip{background:var(--neutral-bg);border-radius:20px;padding:4px 10px;font-size:13px;display:flex;gap:6px;align-items:center}
+  .chip button{border:none;background:none;padding:0 2px;color:var(--muted);font-size:15px}
+  .limits{width:100%;border-collapse:collapse}
+  .limits th,.limits td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);font-size:14px}
+  .limits th{color:var(--muted);font-weight:500;font-size:13px}
+  .meas{display:grid;grid-template-columns:minmax(260px,420px) 1fr;gap:18px;padding:16px 0;border-top:1px solid var(--line)}
+  .meas:first-of-type{border-top:none;padding-top:0}
+  @media (max-width:720px){.meas{grid-template-columns:1fr}}
+  .meas canvas{width:100%;height:auto;border-radius:6px;display:block;background:#000}
+  .meas h3{margin:0 0 6px;font-size:15px}
+  .vals{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 12px}
+  .vals div{font-size:13px;color:var(--muted)}
+  .vals b{display:block;font-size:20px;color:var(--ink)}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)}
+  .badge.bad{background:var(--bad-bg);color:var(--bad)}
+  .badge.na{background:var(--neutral-bg);color:var(--muted)}
+  .empty{color:var(--muted);padding:10px 0}
+  .msg{font-size:14px;color:var(--muted);margin-top:10px;min-height:20px}
+  .msg.err{color:var(--bad)}
+  .note{font-size:13px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Informes CEM DT-6650</h1>
+  <p>Cargá los archivos .txt del equipo y obtené la imagen de cada pantalla y el informe en PDF.</p>
+</header>
+<main>
+
+<section class="card">
+  <h2><span class="step">1</span> Cargar mediciones</h2>
+  <div class="drop" id="drop">
+    <strong>Arrastrá acá los archivos .txt del DT-6650</strong>
+    <span>o hacé clic para elegirlos (podés cargar varios)</span>
+    <input type="file" id="fileInput" accept=".txt,text/plain" multiple hidden>
+  </div>
+  <div class="files" id="fileChips"></div>
+  <details>
+    <summary>Pegar el texto en lugar de cargar un archivo</summary>
+    <div style="margin-top:10px;display:grid;gap:8px">
+      <label>Nombre del archivo<input id="pasteName" placeholder="ej. FARMACOOP.txt"></label>
+      <label>Contenido<textarea id="pasteText" placeholder="EARTH       F1          F2 ..."></textarea></label>
+      <div class="row"><button id="pasteBtn">Agregar</button><button class="link" id="demoBtn">Probar con un ejemplo</button></div>
+    </div>
+  </details>
+  <div class="msg" id="loadMsg"></div>
+</section>
+
+<section class="card">
+  <h2><span class="step">2</span> Datos del informe</h2>
+  <div id="reportForm">
+    <div class="grid">
+      <label>Empresa<input data-k="empresa"></label>
+      <label>CUIT<input data-k="cuit" placeholder="ej. 30-12345678-9" inputmode="numeric"></label>
+    </div>
+    <div class="grid" style="margin-top:12px">
+      <label>Obra / instalación<input data-k="obra"></label>
+      <label>Dirección<input data-k="direccion"></label>
+      <label>Fecha de medición<input type="date" data-k="fecha"></label>
+    </div>
+    <div class="grid" style="margin-top:12px">
+      <label>Técnico responsable<input data-k="tecnico"></label>
+      <label>Matrícula<input data-k="matricula"></label>
+    </div>
+    <h3 class="sub">Equipo de medición</h3>
+    <div class="grid">
+      <label>Nombre<input data-k="eqNombre" data-def="CEM Multifunction Installation Tester"></label>
+      <label>Modelo<input data-k="eqModelo" data-def="DT-6650"></label>
+      <label>N° de serie<input data-k="serie" data-def="2603030240"></label>
+      <label>Última calibración<input data-k="calibracion" placeholder="ej. 03/2026"></label>
+    </div>
+  </div>
+  <label style="margin-top:12px">Observaciones generales<textarea data-k="observaciones" style="font-family:inherit;min-height:70px"></textarea></label>
+  <p class="note">Los datos del técnico y del equipo quedan guardados en este navegador para el próximo informe.</p>
+</section>
+
+<section class="card">
+  <h2><span class="step">3</span> Límites de aceptación</h2>
+  <div id="limitsBox"><p class="empty">Aparecen al cargar mediciones: uno por cada función (EARTH, aislación, lazo, RCD...).</p></div>
+  <p class="note">El límite se compara con el valor principal de la pantalla. Usá el valor que exija la norma o la especificación de la obra.</p>
+</section>
+
+<section class="card">
+  <h2><span class="step">4</span> Mediciones</h2>
+  <div id="measList"><p class="empty">Todavía no cargaste ninguna medición.</p></div>
+</section>
+
+<section class="card">
+  <h2><span class="step">5</span> Descargar</h2>
+  <div class="row">
+    <button class="primary" id="pdfBtn" disabled>Informe PDF</button>
+    <button id="zipBtn" disabled>Todas las pantallas (.zip)</button>
+    <button id="csvBtn" disabled>Tabla para Excel (.csv)</button>
+  </div>
+  <div class="msg" id="dlMsg"></div>
+</section>
+
+</main>
+<script>
+(function(){
+'use strict';
+
+/* ---------- estado ---------- */
+const state = { files: [], meas: [], limits: {}, report: {} };
+let downloadsP = null;
+function getDownloads(){
+  if(!(window.claude && typeof window.claude.use === 'function')) return Promise.resolve(null);
+  if(!downloadsP) downloadsP = window.claude.use('downloads').catch(() => null);
+  return downloadsP;
+}
+const MIME = { pdf:'application/pdf', png:'image/png', zip:'application/zip', csv:'text/csv' };
+async function localSave(filename, data){
+  const ext = filename.split('.').pop().toLowerCase();
+  const blob = data instanceof Blob ? new Blob([data], { type: MIME[ext] || data.type }) : new Blob([data], { type: (MIME[ext] || 'text/plain') + ';charset=utf-8' });
+  const file = (typeof File === 'function') ? new File([blob], filename, { type: blob.type }) : null;
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if(mobile && file && navigator.canShare && navigator.canShare({ files: [file] })){
+    try { await navigator.share({ files: [file], title: filename }); return 'saved'; }
+    catch(e){ if(e && e.name === 'AbortError') return 'declined'; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return 'saved';
+}
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+state.limits = store.get('dt6650.limits', {});
+const savedReport = store.get('dt6650.report', {});
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- lectura ---------- */
+function decode(buf){
+  const bytes = new Uint8Array(buf);
+  // UTF-8 si es válido; si no, un carácter por byte (así se conservan las columnas)
+  try { return new TextDecoder('utf-8', {fatal:true}).decode(bytes).replace(/﻿/g, ''); }
+  catch(e){ return new TextDecoder('windows-1252').decode(bytes); }
+}
+// símbolos que el equipo guarda en GBK (2 bytes) leídos byte a byte
+const GBK = { '¦¸':'Ω', '¦Ì':'µ', '¡æ':'°C', '¡Ý':'≥', '¡Ü':'≤', '¡ã':'°' };
+function fixText(t){ return String(t ?? '').replace(/¦¸|¦Ì|¡æ|¡Ý|¡Ü|¡ã/g, s => GBK[s]); }
+function columnStarts(line){
+  // cada columna empieza donde empieza un título del encabezado (separados por 2+ espacios)
+  const starts = []; const re = /\S+(?: \S+)*/g; let mt;
+  while((mt = re.exec(line))) starts.push(mt.index);
+  return starts;
+}
+function sliceCols(line, starts){
+  // primero por separadores de 2+ espacios; si no coincide la cantidad, por posición
+  const t = line.trim().split(/\s{2,}/);
+  const cells = t.length === starts.length ? t : starts.map((s, i) => line.slice(s, i + 1 < starts.length ? starts[i+1] : undefined).trim());
+  return cells.map(fixText);
+}
+function parseFile(name, text){
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const out = [];
+  let hdr = null, starts = null, units = null;
+  for(let i=0;i<lines.length;i++){
+    const l = lines[i];
+    if(/^\s*-{5,}\s*$/.test(l)) continue;
+    const toks = l.trim().split(/\s+/);
+    if(toks.includes('D1') || (toks.includes('F1') && toks.includes('F2'))){
+      starts = columnStarts(l); hdr = sliceCols(l, starts); units = null; continue;
+    }
+    if(!hdr) continue;
+    if(!units){ units = sliceCols(l, starts); continue; }
+    const vals = sliceCols(l, starts);
+    const m = { id: name + '#' + out.length, file: name, func: vals[0] || hdr[0], F: [], D: [], X: [], ubic: '', obs: '' };
+    hdr.forEach((h, k) => {
+      if(k === 0) return;
+      const v = clean(vals[k]), u = clean(units[k]);
+      if(/^F\d+$/.test(h)) m.F.push({ name: u, value: v });
+      else if(/^D\d+$/.test(h)) m.D.push({ label: h, value: v, ...parseUnit(units[k]) });
+      else if(RCD_COL.test(h)){ const mm = h.match(RCD_COL); const pu = parseUnit(units[k]);
+        m.D.push({ label: '×' + mm[1] + ' ' + mm[2] + '°', mult: mm[1], ang: +mm[2], value: v.replace(/\s*ms$/i, ''), ...pu, unit: pu.unit || 'ms' }); }
+      else m.X.push({ label: h, value: v, ...parseUnit(units[k]) });
+    });
+    out.push(m);
+  }
+  return out;
+}
+function xval(m, label){ const x = (m.X || []).find(e => e.label.toUpperCase() === label); return x ? x.value : ''; }
+function clean(v){ v = (v||'').trim(); return /^[-\s]+[A-Za-zΩµ°]*$/.test(v) ? '' : v; }
+function parseUnit(u){
+  u = clean(u);
+  let mode = '';
+  const mm = u.match(/^(AC|DC)\s*:\s*(.*)$/i);
+  if(mm){ mode = mm[1].toUpperCase(); u = mm[2]; }
+  return { unit: u, mode };
+}
+function num(v){ const n = parseFloat(String(v).replace(',', '.').replace(/[<>]/g, '')); return isNaN(n) ? null : n; }
+
+/* ---------- carga ---------- */
+function addText(name, text){
+  const ms = parseFile(name, text);
+  if(!ms.length){ setMsg('#loadMsg', `No encontré mediciones en "${name}". ¿Es un archivo exportado por el DT-6650?`, true); return; }
+  state.files = state.files.filter(f => f !== name).concat(name);
+  state.meas = state.meas.filter(m => m.file !== name).concat(ms);
+  ms.forEach(m => {
+    const L = state.limits[m.func];
+    if(isRcd(m)){ if(!L || L.x1 === undefined) state.limits[m.func] = { x1: '300', x5: '40', half: 'si' }; }
+    else if(!L) state.limits[m.func] = { lim: '', crit: defaultCrit(m.func) };
+  });
+  setMsg('#loadMsg', `${ms.length} medición${ms.length>1?'es':''} cargada${ms.length>1?'s':''} de "${name}".`);
+  renderAll();
+}
+function defaultCrit(f){ return /INS|ISO|RISO|MEG/i.test(f) ? 'min' : 'max'; }
+async function handleFiles(list){
+  for(const f of list){
+    try { addText(f.name, decode(await f.arrayBuffer())); }
+    catch(e){ setMsg('#loadMsg', `No pude leer "${f.name}".`, true); }
+  }
+}
+function setMsg(sel, t, err){ const el = $(sel); el.textContent = t; el.classList.toggle('err', !!err); }
+
+const drop = $('#drop'), fi = $('#fileInput');
+drop.addEventListener('click', () => fi.click());
+fi.addEventListener('change', () => { const l = [...fi.files]; fi.value = ''; handleFiles(l); });
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => handleFiles([...e.dataTransfer.files]));
+$('#pasteBtn').addEventListener('click', () => {
+  const t = $('#pasteText').value; if(!t.trim()) return;
+  let n = $('#pasteName').value.trim() || 'medicion.txt'; if(!/\.txt$/i.test(n)) n += '.txt';
+  addText(n, t); $('#pasteText').value = '';
+});
+$('#demoBtn').addEventListener('click', () => {
+  addText('FARMACOOP.txt',
+`EARTH       F1          F2          F3          F4          D1          D2          
+Function    ---         ---         ---         ZERO        ¦¸          AC:mA       
+---------------------------------------------------------------------------------------
+EARTH       ---         ---         ---         ZERO        10.64       20.9`);
+  addText('IMPEDANCIA FARM.txt',
+`LOOP/PFC    F1          F2          F3          F4          D1          D2          L-PE        N-PE        L-N         UL          PEN STATUS  
+Function    Loop/Pfc    Current     ---         ---         ¦¸          A           V           V           V           V           N           
+------------------------------------------------------------------------------------------------------------------------------------------------
+LOOP/PFC    L-PE        NO Trip     --          --          9.37        24          234         2           236         25 V        3`);
+  addText('TENSION CONTACTO.txt',
+`VOLTAGE/PHASE  F1          F2          F3          F4          D1          D2          L-PE        N-PE        L-N         PEN STATUS  
+Function       V/Phase     ---         --          ---         V           Hz          V           V           V           N           
+---------------------------------------------------------------------------------------------------------------------------------------
+VOLTAGE/PHASE  N-PE        --          --          --          2.1         50          234         2           235         3`);
+});
+
+
+/* ---------- formulario ---------- */
+const persistKeys = ['tecnico','matricula','eqNombre','eqModelo','serie','calibracion'];
+document.querySelectorAll('#reportForm [data-k], textarea[data-k]').forEach(el => {
+  const k = el.dataset.k;
+  if(persistKeys.includes(k) && savedReport[k]) el.value = savedReport[k];
+  else if(el.dataset.def) el.value = el.dataset.def;
+  if(k === 'fecha') el.value = new Date().toISOString().slice(0,10);
+  state.report[k] = el.value;
+  el.addEventListener('input', () => {
+    state.report[k] = el.value;
+    const p = {}; persistKeys.forEach(pk => p[pk] = state.report[pk] || ''); store.set('dt6650.report', p);
+  });
+});
+
+/* ---------- evaluación ---------- */
+function evaluateRcd(m, L){
+  const all = m.D.filter(d => d.mult && d.value);
+  if(!all.length) return { cls:'na', txt:'Sin valor' };
+  const fails = [];
+  const chk = (mult, lim) => { const l = num(lim); if(l === null) return; rcdVals(m, mult).forEach(d => { const v = num(d.value); if(String(d.value).startsWith('>') || v === null || v > l) fails.push(d); }); };
+  chk('1', L.x1); chk('5', L.x5);
+  if(L.half === 'si') rcdVals(m, '1/2').forEach(d => { if(!String(d.value).startsWith('>')) fails.push(d); });
+  if(num(L.x1) === null && num(L.x5) === null && L.half !== 'si') return { cls:'na', txt:'Sin evaluar' };
+  return fails.length ? { cls:'bad', txt:'No cumple' } : { cls:'ok', txt:'Cumple' };
+}
+function evaluate(m){
+  const L = state.limits[m.func]; const d = m.D[0];
+  if(L && isRcd(m)) return evaluateRcd(m, L);
+  if(!L || L.lim === '' || !d) return { cls:'na', txt:'Sin evaluar' };
+  const lim = num(L.lim), v = num(d.value);
+  if(lim === null) return { cls:'na', txt:'Sin evaluar' };
+  if(v === null) return { cls:'na', txt:'Sin valor' };
+  const raw = String(d.value);
+  let ok;
+  if(L.crit === 'max') ok = raw.startsWith('>') ? false : v <= lim;
+  else ok = raw.startsWith('<') ? false : v >= lim;
+  return ok ? { cls:'ok', txt:'Cumple' } : { cls:'bad', txt:'No cumple' };
+}
+function limitText(m){
+  const L = state.limits[m.func];
+  if(L && isRcd(m)){ const p = []; if(num(L.x1) !== null) p.push('×1 ≤ ' + L.x1 + ' ms'); if(num(L.x5) !== null) p.push('×5 ≤ ' + L.x5 + ' ms'); if(L.half === 'si') p.push('×1/2 sin disparo'); return p.join('; ') || '—'; }
+  if(!L || L.lim === '') return '—';
+  const u = m.D[0] ? m.D[0].unit : '';
+  return (L.crit === 'max' ? '≤ ' : '≥ ') + L.lim + (u ? ' ' + u : '');
+}
+function fmtVal(d){ if(!d || !d.value) return '—'; const hasU = d.unit && !new RegExp('\\s*' + d.unit.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '$').test(d.value);
+  return d.value + (hasU ? ' ' + d.unit : '') + (d.mode ? ' (' + (d.mode==='AC'?'CA':'CC') + ')' : ''); }
+const DNAMES = ['Valor principal','Valor secundario'];
+function dName(d, k){ return d.mult ? d.label : (DNAMES[k] || d.label); }
+function summaryVals(m){
+  if(!isRcd(m)) return [fmtVal(m.D[0]), m.D[1] ? fmtVal(m.D[1]) : '-'];
+  const g = mult => { const v = m.D.filter(d => d.mult === mult).sort((a,b) => a.ang - b.ang).map(d => d.value || '---'); return '×' + mult + ': ' + v.join(' / ') + ' ms'; };
+  return [g('1'), g('5')];
+}
+function extras(m){ return (m.X || []).filter(x => x.value && !/STATUS/i.test(x.label)); }
+
+/* ---------- pantalla del equipo ---------- */
+const W = 640, H = 480;
+function drawScreen(m, canvas){
+  canvas.width = W; canvas.height = H;
+  const c = canvas.getContext('2d');
+  const F = '"Roboto Condensed", "Arial Narrow", Arial, sans-serif';
+  // fondo y panel izquierdo
+  c.fillStyle = '#6f97e6'; c.fillRect(0,0,W,H);
+  c.fillStyle = '#5a85e0'; c.fillRect(0,0,W,16);
+  // área principal
+  const mx = 150, my = 18, mw = W - mx - 6, mh = 376;
+  const g = c.createLinearGradient(0,my,0,my+mh); g.addColorStop(0,'#1f3737'); g.addColorStop(1,'#3f5f5a');
+  c.fillStyle = g; c.fillRect(mx,my,mw,mh);
+  c.strokeStyle = '#a9c2d8'; c.lineWidth = 2; c.strokeRect(mx+1,my+1,mw-2,mh-2);
+  // barra inferior
+  c.fillStyle = '#1f3fa6'; c.fillRect(mx, my+mh, W-mx, H-my-mh);
+  c.fillStyle = '#c9d9f7'; c.fillRect(mx, my+mh, W-mx, 3);
+  // teclas F1-F4 (nombre de la tecla arriba, opción elegida abajo)
+  const keyGap = 10, keyTop = 22, keyH = (H - keyTop - 12 - 3*keyGap) / 4;
+  m.F.forEach((f, i) => {
+    if(!f.name && !f.value) return;
+    const y = keyTop + i * (keyH + keyGap);
+    c.fillStyle = '#8fb0ee'; c.fillRect(12, y, 126, keyH);
+    c.strokeStyle = '#5a7fc8'; c.lineWidth = 1.5; c.strokeRect(12.5, y+.5, 125, keyH-1);
+    c.fillStyle = '#26365a'; c.textAlign = 'center';
+    const lines = (f.name && f.value && f.name !== f.value) ? [f.name, f.value] : [f.value || f.name];
+    if(lines.length === 1) fitText(c, lines[0], 75, y + keyH/2, 114, 26, '700', F);
+    else { fitText(c, lines[0], 75, y + keyH*0.33, 114, 22, '700', F); fitText(c, lines[1], 75, y + keyH*0.70, 114, 22, '700', F); }
+  });
+  // encabezado
+  c.fillStyle = '#ffffff'; c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+  c.font = `700 24px ${F}`; c.fillText('Función:', mx+8, my+32);
+  c.fillText(m.func, mx+160, my+32);
+  c.textAlign = 'left';
+  fitTextLeft(c, 'Nombre de archivo: ' + m.file, mx+8, my+62, mw-16, 22, '700', F);
+  // tabla de tiempos de disparo (RCD automático)
+  const Dv = m.D.filter(d => d.value);
+  if(isRcd(m)){ drawRcdTable(c, m, mx, my, mw, mh, F); }
+  else {
+  // valores
+  const colors = [['#e3342f','#ff5a52'], ['#1f46e0','#2f5bff'], ['#0f8a5f','#18a874'], ['#a05a00','#c87400']];
+  const D = m.D.filter(d => d.value || d.unit);
+  const slots = D.length <= 1 ? [{y:180,size:110,lineY:250}] :
+                D.length === 2 ? [{y:170,size:100,lineY:228},{y:320,size:84,lineY:370}] :
+                D.map((_, i) => { const top = 100, step = (mh - 100) / D.length; return { y: top + step*i + step*0.62, size: Math.min(70, step*0.7), lineY: top + step*(i+1) - 6 }; });
+  D.forEach((d, i) => {
+    const s = slots[i]; const col = colors[i % colors.length];
+    c.fillStyle = '#ffffff'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    fitText(c, d.value || '---', mx + (mw - 90)/2 + 4, s.y + s.size*0.36, mw - 120, s.size, '700', F, 'alphabetic');
+    // línea
+    const lg = c.createLinearGradient(mx+20,0,mx+mw-100,0);
+    lg.addColorStop(0,'rgba(0,0,0,0)'); lg.addColorStop(.15,col[1]); lg.addColorStop(.85,col[1]); lg.addColorStop(1,'rgba(0,0,0,0)');
+    c.fillStyle = lg; c.fillRect(mx+20, s.lineY, mw-120, 3);
+    // insignia de unidad
+    if(d.unit){
+      const bw = 82, bh = Math.max(40, Math.min(56, s.size*0.55)), bx = mx + mw - bw - 8, by = s.lineY - bh - 4;
+      c.fillStyle = col[0]; roundRect(c, bx, by, bw, bh, 10); c.fill();
+      c.fillStyle = '#ffffff'; c.textAlign = 'center';
+      const hasMode = !!d.mode;
+      fitText(c, d.unit, bx + bw/2, by + bh/2 + (hasMode ? 6 : 0), bw - 12, hasMode ? bh*0.55 : bh*0.65, '700', F);
+      if(hasMode){ c.font = `700 ${Math.round(bh*0.6)}px ${F}`; c.textBaseline = 'middle'; c.fillText(d.mode === 'AC' ? '~' : '⎓', bx + bw/2, by + bh*0.2); }
+    }
+  });
+  }
+  // conexiones y tensiones entre conductores
+  const by0 = my + mh + 3, bh0 = H - by0;
+  const st = parseInt(xval(m, 'PEN STATUS'), 10);
+  const on = k => isNaN(st) ? k < 2 : !!(st & (1 << k));
+  const pins = [['L','#e3342f'],['PE','#7ed321'],['N','#7d8ea8']];
+  const px = [mx + 52, mx + 196, mx + 340], cy = by0 + 40;
+  pins.forEach((p, i) => {
+    c.fillStyle = '#ffffff'; c.font = `700 22px ${F}`; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    c.fillText(p[0], px[i], by0 + 21);
+    c.beginPath(); c.arc(px[i], cy, 12, 0, Math.PI*2); c.strokeStyle = on(i) ? p[1] : '#7d8ea8'; c.lineWidth = 4; c.stroke();
+    c.beginPath(); c.arc(px[i], cy, 5.5, 0, Math.PI*2); c.fillStyle = '#dfe7f5'; c.fill();
+  });
+  const vLPE = xval(m,'L-PE'), vNPE = xval(m,'N-PE'), vLN = xval(m,'L-N'), ul = xval(m,'UL');
+  c.font = `700 24px ${F}`; c.fillStyle = '#ffffff'; c.textBaseline = 'middle';
+  if(vLPE){ c.fillText(vLPE, (px[0]+px[1])/2, cy); dash(c, px[0]+16, cy, '#f5a623'); dash(c, px[1]-24, cy, '#f5a623'); }
+  if(vNPE){ c.fillText(vNPE, (px[1]+px[2])/2, cy); dash(c, px[1]+16, cy, '#e3342f'); dash(c, px[2]-24, cy, '#e3342f'); }
+  if(vLN){
+    c.strokeStyle = '#ffffff'; c.lineWidth = 2.5; const yb = cy + 26;
+    c.beginPath(); c.moveTo(px[0], yb-6); c.lineTo(px[0]+10, yb); c.lineTo((px[0]+px[1])/2 + 20, yb); c.stroke();
+    c.beginPath(); c.moveTo((px[1]+px[2])/2 - 20, yb); c.lineTo(px[2]-10, yb); c.lineTo(px[2], yb-6); c.stroke();
+    c.fillText(vLN, px[1], yb + 4);
+  }
+  const uf = xval(m, 'UF'); const vtxt = v => v.replace(/\s*V$/i, '') + ' V';
+  c.textAlign = 'right';
+  if(uf && ul){ c.font = `700 22px ${F}`; c.fillText('UF: ' + vtxt(uf), W - 18, by0 + 24); c.fillText('UL: ' + vtxt(ul), W - 18, by0 + 56); }
+  else if(ul || uf){ c.font = `700 26px ${F}`; c.fillText((ul ? 'UL: ' + vtxt(ul) : 'UF: ' + vtxt(uf)), W - 18, by0 + 30); }
+}
+const RCD_COL = /^X\s*(1\/2|\d+)\s*\(\s*(\d+)\s*\)$/i;
+const MULT_ORDER = { '1/2': 0, '1': 1, '2': 2, '5': 3 };
+function isRcd(m){ return m.D.some(d => d.mult); }
+function rcdRows(m){ return m.D.filter(d => d.mult).slice().sort((a, b) => (MULT_ORDER[a.mult] ?? 9) - (MULT_ORDER[b.mult] ?? 9) || a.ang - b.ang); }
+function rcdVals(m, mult){ return m.D.filter(d => d.mult === mult && d.value); }
+function drawRcdTable(c, m, mx, my, mw, mh, F){
+  const top = my + 74;
+  c.fillStyle = '#04070b'; c.fillRect(mx + 4, top, mw - 8, my + mh - top - 4);
+  const D = rcdRows(m), n = D.length, rh = (my + mh - top - 8) / n;
+  D.forEach((d, i) => {
+    const y = top + 4 + i * rh, cy = y + rh / 2;
+    if(i) { c.fillStyle = '#2a4f86'; c.fillRect(mx + 8, y, mw - 16, 1.5); }
+    const parts = ['x' + d.mult, d.ang + '°'];
+    c.fillStyle = '#3d8cff'; c.textBaseline = 'middle';
+    const fs = Math.min(34, rh * 0.62);
+    c.font = `700 ${fs}px ${F}`;
+    c.textAlign = 'left';  c.fillText(parts[0] || '', mx + 18, cy);
+    c.fillText((parts[1] || '') + (parts[1] ? ' :' : ''), mx + 110, cy);
+    c.textAlign = 'right'; c.fillText(d.value ? d.value.replace(/^>\s*/, '> ') : '- - -', mx + mw - 78, cy);
+    c.textAlign = 'left';  c.fillText(d.unit || 'ms', mx + mw - 66, cy);
+  });
+}
+function dash(c, x, y, col){ c.fillStyle = col; c.fillRect(x, y - 1.5, 8, 3); c.fillStyle = '#ffffff'; }
+function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+function fitText(c, t, x, y, maxW, size, weight, fam, base){
+  let s = size; c.font = `${weight} ${s}px ${fam}`;
+  while(c.measureText(t).width > maxW && s > 10){ s -= 2; c.font = `${weight} ${s}px ${fam}`; }
+  c.textBaseline = base || 'middle'; c.fillText(t, x, y);
+}
+function fitTextLeft(c, t, x, y, maxW, size, weight, fam){
+  let s = size; c.font = `${weight} ${s}px ${fam}`;
+  while(c.measureText(t).width > maxW && s > 10){ s -= 1; c.font = `${weight} ${s}px ${fam}`; }
+  c.textBaseline = 'alphabetic'; c.fillText(t, x, y);
+}
+
+/* ---------- render ---------- */
+function renderAll(){ renderChips(); renderLimits(); renderMeas(); ['#pdfBtn','#zipBtn','#csvBtn'].forEach(s => $(s).disabled = !state.meas.length); }
+function renderChips(){
+  $('#fileChips').innerHTML = state.files.map(f => `<span class="chip">${esc(f)} <button title="Quitar" data-rm="${esc(f)}">×</button></span>`).join('');
+  $('#fileChips').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+    const f = b.dataset.rm; state.files = state.files.filter(x => x !== f); state.meas = state.meas.filter(m => m.file !== f); renderAll();
+  });
+}
+function renderLimits(){
+  const funcs = [...new Set(state.meas.map(m => m.func))];
+  if(!funcs.length){ $('#limitsBox').innerHTML = '<p class="empty">Aparecen al cargar mediciones: uno por cada función (EARTH, aislación, lazo, RCD...).</p>'; return; }
+  $('#limitsBox').innerHTML = `<table class="limits"><thead><tr><th>Función</th><th>Criterio</th><th>Límite</th><th>Unidad</th></tr></thead><tbody>${
+    funcs.map(f => { const L = state.limits[f]; const m0 = state.meas.find(m => m.func === f); const u = (m0.D[0] || {}).unit || '';
+      if(isRcd(m0)) return `<tr><td><b>${esc(f)}</b></td><td colspan="3"><div class="row">
+        <label style="display:flex;gap:6px;align-items:center">×1 máx <input data-f="${esc(f)}" data-p="x1" value="${esc(L.x1)}" inputmode="decimal" style="width:80px;margin:0"> ms</label>
+        <label style="display:flex;gap:6px;align-items:center">×5 máx <input data-f="${esc(f)}" data-p="x5" value="${esc(L.x5)}" inputmode="decimal" style="width:80px;margin:0"> ms</label>
+        <label style="display:flex;gap:6px;align-items:center">×1/2 no debe disparar <select data-f="${esc(f)}" data-p="half" style="width:auto;margin:0"><option value="si"${L.half==='si'?' selected':''}>Sí</option><option value="no"${L.half!=='si'?' selected':''}>No evaluar</option></select></label>
+      </div></td></tr>`;
+      return `<tr><td><b>${esc(f)}</b></td>
+      <td><select data-f="${esc(f)}" data-p="crit"><option value="max"${L.crit==='max'?' selected':''}>Máximo (≤)</option><option value="min"${L.crit==='min'?' selected':''}>Mínimo (≥)</option></select></td>
+      <td><input data-f="${esc(f)}" data-p="lim" value="${esc(L.lim)}" inputmode="decimal" placeholder="sin límite" style="max-width:140px"></td>
+      <td>${esc(u)}</td></tr>`; }).join('')}</tbody></table>`;
+  $('#limitsBox').querySelectorAll('[data-f]').forEach(el => el.addEventListener('input', () => {
+    state.limits[el.dataset.f][el.dataset.p] = el.value; store.set('dt6650.limits', state.limits); updateBadges();
+  }));
+}
+function renderMeas(){
+  const box = $('#measList');
+  if(!state.meas.length){ box.innerHTML = '<p class="empty">Todavía no cargaste ninguna medición.</p>'; return; }
+  box.innerHTML = '';
+  state.meas.forEach((m, i) => {
+    const el = document.createElement('div'); el.className = 'meas';
+    el.innerHTML = `<div><canvas></canvas></div>
+      <div>
+        <h3>${i+1}. ${esc(m.func)} <span style="color:var(--muted);font-weight:400">· ${esc(m.file)}</span></h3>
+        <div class="vals">${m.D.map((d,k) => `<div>${esc(dName(d,k))}<b>${esc(fmtVal(d))}</b></div>`).join('')}${extras(m).map(x => `<div>${esc(x.label)}<b>${esc(fmtVal(x))}</b></div>`).join('')}
+          <div>Resultado<b><span class="badge" data-badge="${i}"></span></b></div></div>
+        <div class="grid" style="grid-template-columns:1fr">
+          <label>Ubicación / circuito<input data-u="${i}" value="${esc(m.ubic)}" placeholder="ej. Jabalina tablero principal"></label>
+          <label>Observación<input data-o="${i}" value="${esc(m.obs)}"></label>
+        </div>
+        <div class="row" style="margin-top:10px"><button data-png="${i}">Descargar imagen (.png)</button></div>
+      </div>`;
+    box.appendChild(el);
+    drawScreen(m, el.querySelector('canvas'));
+  });
+  box.querySelectorAll('[data-u]').forEach(e => e.oninput = () => state.meas[+e.dataset.u].ubic = e.value);
+  box.querySelectorAll('[data-o]').forEach(e => e.oninput = () => state.meas[+e.dataset.o].obs = e.value);
+  box.querySelectorAll('[data-png]').forEach(b => b.onclick = () => downloadPng(+b.dataset.png));
+  updateBadges();
+}
+function updateBadges(){
+  document.querySelectorAll('[data-badge]').forEach(b => { const r = evaluate(state.meas[+b.dataset.badge]); b.className = 'badge ' + r.cls; b.textContent = r.txt; });
+}
+
+/* ---------- descargas ---------- */
+function baseName(m, i){ return (m.file.replace(/\.txt$/i,'') + '_' + String(i+1).padStart(2,'0') + '_' + m.func).replace(/[^\w\-]+/g,'_'); }
+function screenBlob(m){ return new Promise(res => { const cv = document.createElement('canvas'); drawScreen(m, cv); cv.toBlob(b => res(b), 'image/png'); }); }
+async function save(filename, data){
+  const dl = await getDownloads();
+  if(!dl){
+    try { const r = await localSave(filename, data);
+      if(r === 'declined'){ setMsg('#dlMsg', 'Descarga cancelada.'); return false; }
+      setMsg('#dlMsg', `Listo: ${filename}`); return true; }
+    catch(e){ setMsg('#dlMsg', 'No se pudo descargar el archivo.', true); return false; }
+  }
+  try { await dl.save({ filename, data }); setMsg('#dlMsg', `Listo: ${filename}`); return true; }
+  catch(e){
+    const code = e && e.code;
+    if(code === 'declined') setMsg('#dlMsg', 'Descarga cancelada.');
+    else if(code === 'rate_limited') setMsg('#dlMsg', 'Ya hay una descarga esperando confirmación. Probá de nuevo en unos segundos.', true);
+    else setMsg('#dlMsg', 'No se pudo descargar el archivo en esta vista.', true);
+    return false;
+  }
+}
+async function downloadPng(i){ const m = state.meas[i]; await save(baseName(m, i) + '.png', await screenBlob(m)); }
+
+$('#zipBtn').onclick = async () => {
+  if(!window.JSZip){ setMsg('#dlMsg', 'No se cargó el componente ZIP. Recargá la página.', true); return; }
+  const zip = new JSZip();
+  for(let i=0;i<state.meas.length;i++){ zip.file(baseName(state.meas[i], i) + '.png', await screenBlob(state.meas[i])); }
+  await save(reportName() + '_pantallas.zip', await zip.generateAsync({ type:'blob' }));
+};
+$('#csvBtn').onclick = async () => {
+  const q = v => '"' + String(v ?? '').replace(/"/g,'""') + '"';
+  const maxD = Math.max(...state.meas.map(m => m.D.length));
+  const head = ['N°','Archivo','Función','Ubicación'];
+  for(let k=0;k<maxD;k++) head.push('D'+(k+1), 'Unidad D'+(k+1));
+  const xl = [...new Set(state.meas.flatMap(m => extras(m).map(x => x.label)))];
+  head.push('Ajustes', ...xl, 'Límite','Resultado','Observación');
+  const rows = state.meas.map((m,i) => {
+    const r = [i+1, m.file, m.func, m.ubic];
+    for(let k=0;k<maxD;k++){ const d = m.D[k] || {}; r.push((d.value||'').replace('.', ','), (d.mode ? d.mode + ' ' : '') + (d.unit||'')); }
+    r.push(m.F.filter(f => f.value).map(f => (f.name && f.name !== f.value ? f.name + ': ' : '') + f.value).join(' / '));
+    xl.forEach(l => { const x = extras(m).find(e => e.label === l); r.push(x ? fmtVal(x) : ''); });
+    r.push(limitText(m), evaluate(m).txt, m.obs); return r;
+  });
+  const csv = '﻿' + [head, ...rows].map(r => r.map(q).join(';')).join('\r\n');
+  await save(reportName() + '.csv', csv);
+};
+function reportName(){ const r = state.report; return ('Informe_' + (r.empresa || r.obra || 'DT6650') + '_' + (r.fecha || '')).replace(/[^\w\-]+/g,'_'); }
+
+/* ---------- PDF ---------- */
+const pdfSafe = s => String(s ?? '').replace(/MΩ/g,'MOhm').replace(/kΩ/g,'kOhm').replace(/Ω/g,'Ohm').replace(/≤/g,'<=').replace(/≥/g,'>=').replace(/µ/g,'u').replace(/—/g,'-').replace(/[^\x00-\xFF]/g,'');
+function fmtDate(iso){ if(!iso) return ''; const p = iso.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso; }
+$('#pdfBtn').onclick = async () => {
+  if(!window.jspdf){ setMsg('#dlMsg', 'No se cargó el generador de PDF. Recargá la página.', true); return; }
+  setMsg('#dlMsg', 'Generando PDF…');
+  const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const r = state.report, PW = 210, M = 15; let y = M;
+  const blue = [31,79,209];
+  const footer = () => { const n = doc.getNumberOfPages(); for(let p=1;p<=n;p++){ doc.setPage(p); doc.setFontSize(8); doc.setTextColor(120); doc.text(pdfSafe([r.tecnico ? r.tecnico + (r.matricula ? ' (Mat. ' + r.matricula + ')' : '') : '', [r.eqModelo, r.serie ? 'N° ' + r.serie : ''].filter(Boolean).join(' ')].filter(Boolean).join('  ·  ')), M, 290); doc.text(`Página ${p} de ${n}`, PW-M, 290, {align:'right'}); } };
+  const need = h => { if(y + h > 280){ doc.addPage(); y = M; } };
+
+  doc.setFillColor(...blue); doc.rect(0,0,PW,4,'F');
+  doc.setTextColor(20); doc.setFont('helvetica','bold'); doc.setFontSize(17);
+  doc.text('Informe de mediciones eléctricas', M, y + 8); y += 13;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90);
+  y += 2;
+  const info = [['Empresa', r.empresa],['CUIT', r.cuit],['Obra / instalación', r.obra],['Dirección', r.direccion],['Fecha de medición', fmtDate(r.fecha)],
+                ['Técnico responsable', (r.tecnico || '') + (r.matricula ? (r.tecnico ? '  ·  ' : '') + 'Mat. ' + r.matricula : '')],
+                ['Equipo de medición', [r.eqNombre, r.eqModelo].filter(Boolean).join(' ')],['N° de serie', r.serie],['Última calibración', r.calibracion]].filter(x => x[1]);
+  doc.setDrawColor(225); doc.setFillColor(246,247,249);
+  const ih = info.length * 6 + 6; doc.roundedRect(M, y, PW-2*M, ih, 2, 2, 'F'); y += 7;
+  doc.setFontSize(10);
+  info.forEach(([k,v]) => { doc.setTextColor(110); doc.text(pdfSafe(k), M+4, y); doc.setTextColor(20); doc.text(pdfSafe(v), M+50, y); y += 6; });
+  y += 6;
+
+  // tabla resumen
+  doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Resumen de resultados', M, y); y += 5;
+  const cols = [{h:'N°',w:9},{h:'Función',w:22},{h:'Ubicación / circuito',w:52},{h:'Valor medido',w:30},{h:'Secundario',w:26},{h:'Límite',w:20},{h:'Resultado',w:21}];
+  const rowH = 7;
+  const drawHead = () => { doc.setFillColor(...blue); doc.rect(M, y, PW-2*M, rowH, 'F'); doc.setTextColor(255); doc.setFontSize(9); doc.setFont('helvetica','bold'); let x = M+2; cols.forEach(c => { doc.text(c.h, x, y+4.8); x += c.w; }); y += rowH; };
+  drawHead();
+  doc.setFont('helvetica','normal');
+  state.meas.forEach((m, i) => {
+    if(y + rowH > 280){ doc.addPage(); y = M; drawHead(); doc.setFont('helvetica','normal'); }
+    if(i % 2){ doc.setFillColor(246,247,249); doc.rect(M, y, PW-2*M, rowH, 'F'); }
+    const ev = evaluate(m);
+    const sv = summaryVals(m);
+    const cells = [String(i+1), m.func, m.ubic || m.file, sv[0], sv[1], limitText(m), ev.txt];
+    let x = M+2; doc.setFontSize(9);
+    cells.forEach((t, k) => {
+      if(k === 6){ doc.setTextColor(...(ev.cls==='ok'?[19,122,58]:ev.cls==='bad'?[180,35,24]:[110,110,110])); doc.setFont('helvetica','bold'); }
+      else { doc.setTextColor(30); doc.setFont('helvetica','normal'); }
+      let s = pdfSafe(t); while(doc.getTextWidth(s) > cols[k].w - 2 && s.length > 3) s = s.slice(0,-4) + '...';
+      doc.text(s, x, y+4.8); x += cols[k].w;
+    });
+    y += rowH;
+  });
+  y += 4;
+  if(r.observaciones){ need(20); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20); doc.text('Observaciones', M, y+4); y += 9;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); const lines = doc.splitTextToSize(pdfSafe(r.observaciones), PW-2*M); need(lines.length*5); doc.text(lines, M, y); y += lines.length*5 + 4; }
+
+  // pantallas
+  doc.addPage(); y = M;
+  doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Registro de pantallas del instrumento', M, y+4); y += 10;
+  const iw = 120, ih2 = iw * H / W;
+  for(let i=0;i<state.meas.length;i++){
+    const m = state.meas[i];
+    need(ih2 + 18);
+    const cv = document.createElement('canvas'); drawScreen(m, cv);
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(20);
+    doc.text(pdfSafe(`${i+1}. ${m.func}${m.ubic ? ' - ' + m.ubic : ''}`), M, y+4);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110);
+    doc.text(pdfSafe(`Archivo: ${m.file}`), PW-M, y+4, {align:'right'}); y += 7;
+    doc.addImage(cv.toDataURL('image/png'), 'PNG', M, y, iw, ih2);
+    const tx = M + iw + 6; let ty = y + 6; const ev = evaluate(m);
+    if(isRcd(m)){ doc.setFontSize(10); rcdRows(m).forEach(d => { doc.setTextColor(110); doc.text(pdfSafe(d.label.replace('×','x')), tx, ty); doc.setTextColor(20); doc.setFont('helvetica','bold'); doc.text(pdfSafe(d.value ? d.value + ' ms' : '---'), tx + 28, ty); doc.setFont('helvetica','normal'); ty += 6; }); ty += 4; }
+    else m.D.forEach((d,k) => { doc.setTextColor(110); doc.setFontSize(9); doc.text(dName(d,k), tx, ty); doc.setTextColor(20); doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.text(pdfSafe(fmtVal(d)), tx, ty+6); doc.setFont('helvetica','normal'); ty += 15; });
+    const ex = extras(m); if(ex.length){ doc.setTextColor(110); doc.setFontSize(9); doc.text(pdfSafe(ex.map(x => x.label + ': ' + fmtVal(x)).join('   ')), tx, ty, {maxWidth: PW - M - tx}); ty += 10; }
+    doc.setTextColor(110); doc.setFontSize(9); doc.text('Límite', tx, ty); doc.setTextColor(20); doc.setFontSize(11); doc.text(doc.splitTextToSize(pdfSafe(limitText(m)), PW - M - tx), tx, ty+6); ty += isRcd(m) ? 20 : 15;
+    doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(...(ev.cls==='ok'?[19,122,58]:ev.cls==='bad'?[180,35,24]:[110,110,110])); doc.text(ev.txt, tx, ty+2); doc.setFont('helvetica','normal');
+    if(m.obs){ doc.setFontSize(9); doc.setTextColor(60); doc.text(doc.splitTextToSize(pdfSafe(m.obs), PW - M - tx), tx, ty+9); }
+    y += ih2 + 10;
+  }
+  // firma
+  need(30); y += 14; doc.setDrawColor(150); doc.line(PW-M-70, y, PW-M, y);
+  doc.setFontSize(9); doc.setTextColor(90); doc.text(pdfSafe(r.tecnico || 'Firma y aclaración'), PW-M-35, y+5, {align:'center'});
+  if(r.matricula) doc.text(pdfSafe('Mat. ' + r.matricula), PW-M-35, y+10, {align:'center'});
+  footer();
+  await save(reportName() + '.pdf', doc.output('blob'));
+};
+
+// redibujar al cargar la tipografía
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if(state.meas.length) renderMeas(); });
+getDownloads();
+})();
+</script>
+<script>
+if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>
