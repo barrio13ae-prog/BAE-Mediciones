@@ -3,16 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Informes DT-6650</title>
-<meta name="theme-color" content="#1f3fa6">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Informes DT-6650">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
+<title>BAE Servicios de Instalaciones — Herramientas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -165,7 +156,7 @@ function getDownloads(){
   if(!downloadsP) downloadsP = window.claude.use('downloads').catch(() => null);
   return downloadsP;
 }
-const MIME = { pdf:'application/pdf', png:'image/png', zip:'application/zip', csv:'text/csv' };
+const MIME = { pdf:'application/pdf', png:'image/png', zip:'application/zip', csv:'text/csv', xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
 async function localSave(filename, data){
   const ext = filename.split('.').pop().toLowerCase();
   const blob = data instanceof Blob ? new Blob([data], { type: MIME[ext] || data.type }) : new Blob([data], { type: (MIME[ext] || 'text/plain') + ';charset=utf-8' });
@@ -287,18 +278,18 @@ $('#pasteBtn').addEventListener('click', () => {
 });
 $('#demoBtn').addEventListener('click', () => {
   addText('FARMACOOP.txt',
-`EARTH       F1          F2          F3          F4          D1          D2          
-Function    ---         ---         ---         ZERO        ¦¸          AC:mA       
+`EARTH       F1          F2          F3          F4          D1          D2
+Function    ---         ---         ---         ZERO        ¦¸          AC:mA
 ---------------------------------------------------------------------------------------
 EARTH       ---         ---         ---         ZERO        10.64       20.9`);
   addText('IMPEDANCIA FARM.txt',
-`LOOP/PFC    F1          F2          F3          F4          D1          D2          L-PE        N-PE        L-N         UL          PEN STATUS  
-Function    Loop/Pfc    Current     ---         ---         ¦¸          A           V           V           V           V           N           
+`LOOP/PFC    F1          F2          F3          F4          D1          D2          L-PE        N-PE        L-N         UL          PEN STATUS
+Function    Loop/Pfc    Current     ---         ---         ¦¸          A           V           V           V           V           N
 ------------------------------------------------------------------------------------------------------------------------------------------------
 LOOP/PFC    L-PE        NO Trip     --          --          9.37        24          234         2           236         25 V        3`);
   addText('TENSION CONTACTO.txt',
-`VOLTAGE/PHASE  F1          F2          F3          F4          D1          D2          L-PE        N-PE        L-N         PEN STATUS  
-Function       V/Phase     ---         --          ---         V           Hz          V           V           V           N           
+`VOLTAGE/PHASE  F1          F2          F3          F4          D1          D2          L-PE        N-PE        L-N         PEN STATUS
+Function       V/Phase     ---         --          ---         V           Hz          V           V           V           N
 ---------------------------------------------------------------------------------------------------------------------------------------
 VOLTAGE/PHASE  N-PE        --          --          --          2.1         50          234         2           235         3`);
 });
@@ -586,7 +577,7 @@ $('#csvBtn').onclick = async () => {
   const csv = '﻿' + [head, ...rows].map(r => r.map(q).join(';')).join('\r\n');
   await save(reportName() + '.csv', csv);
 };
-function reportName(){ const r = state.report; return ('Informe_' + (r.empresa || r.obra || 'DT6650') + '_' + (r.fecha || '')).replace(/[^\w\-]+/g,'_'); }
+function reportName(){ const r = state.report; return ('BAE_Informe_' + (r.empresa || r.obra || 'DT6650') + '_' + (r.fecha || '')).replace(/[^\w\-]+/g,'_'); }
 
 /* ---------- PDF ---------- */
 const pdfSafe = s => String(s ?? '').replace(/MΩ/g,'MOhm').replace(/kΩ/g,'kOhm').replace(/Ω/g,'Ohm').replace(/≤/g,'<=').replace(/≥/g,'>=').replace(/µ/g,'u').replace(/—/g,'-').replace(/[^\x00-\xFF]/g,'');
@@ -601,6 +592,15 @@ $('#pdfBtn').onclick = async () => {
   const need = h => { if(y + h > 280){ doc.addPage(); y = M; } };
 
   doc.setFillColor(...blue); doc.rect(0,0,PW,4,'F');
+  const pf = (typeof window.__perfil === 'function') ? window.__perfil() : null;
+  if(pf && pf.empresa){
+    doc.setFillColor(...blue); doc.roundedRect(M, y, 11, 11, 2, 2, 'F');
+    doc.setFillColor(255,211,77); doc.triangle(M+6.6, y+1.8, M+3.6, y+6.4, M+6, y+6.4, 'F'); doc.triangle(M+6, y+6.4, M+5, y+9.4, M+7.6, y+4.8, 'F'); doc.rect(M+5.4, y+4.8, 2.2, 1.6, 'F');
+    doc.setTextColor(...blue); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(pdfSafe(pf.empresa), M+14, y+4.6);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(100); doc.text(pdfSafe(pf.credenciales.join('  ·  ')), M+14, y+9.2, { maxWidth: PW - 2*M - 14 });
+    if(pf.contacto){ doc.setFontSize(8.5); doc.text(pdfSafe(pf.contacto), PW-M, y+4.6, { align:'right' }); }
+    y += 15; doc.setDrawColor(225); doc.line(M, y, PW-M, y); y += 2;
+  }
   doc.setTextColor(20); doc.setFont('helvetica','bold'); doc.setFontSize(17);
   doc.text('Informe de mediciones eléctricas', M, y + 8); y += 13;
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90);
@@ -666,6 +666,7 @@ $('#pdfBtn').onclick = async () => {
   need(30); y += 14; doc.setDrawColor(150); doc.line(PW-M-70, y, PW-M, y);
   doc.setFontSize(9); doc.setTextColor(90); doc.text(pdfSafe(r.tecnico || 'Firma y aclaración'), PW-M-35, y+5, {align:'center'});
   if(r.matricula) doc.text(pdfSafe('Mat. ' + r.matricula), PW-M-35, y+10, {align:'center'});
+  if(pf && pf.empresa) doc.text(pdfSafe(pf.empresa), PW-M-35, y + (r.matricula ? 15 : 10), {align:'center'});
   footer();
   await save(reportName() + '.pdf', doc.output('blob'));
 };
@@ -673,12 +674,10 @@ $('#pdfBtn').onclick = async () => {
 // redibujar al cargar la tipografía
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if(state.meas.length) renderMeas(); });
 getDownloads();
+// compartido con el módulo de protocolo SRT y diseño de PAT
+window.__dt = { state, save, isRcd, rcdVals, xval, num };
 })();
 </script>
-<script>
-if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
-}
-</script>
+<script src="srt.js"></script>
 </body>
 </html>
