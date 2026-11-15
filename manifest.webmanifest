@@ -1,17 +1,16 @@
 {
-  "name": "Informes DT-6650",
-  "short_name": "DT-6650",
-  "description": "Convierte las mediciones del CEM DT-6650 en imágenes de pantalla e informes PDF.",
-  "lang": "es-AR",
+  "name": "BAE Mediciones",
+  "short_name": "BAE Mediciones",
+  "description": "BAE Servicios de Instalaciones — Informe DT-6650, protocolo SRT 900/15 y diseño de PAT.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "orientation": "any",
   "background_color": "#f4f5f7",
-  "theme_color": "#1f3fa6",
+  "theme_color": "#1f4fd1",
+  "lang": "es-AR",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f4fd1">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="BAE Mediciones">
 <title>BAE Servicios de Instalaciones — Herramientas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -679,5 +685,11 @@ window.__dt = { state, save, isRcd, rcdVals, xval, num };
 })();
 </script>
 <script src="srt.js"></script>
+<script>
+// instalable como app (GitHub Pages); dentro de Claude simplemente se omite
+if('serviceWorker' in navigator && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)){
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+</script>
 </body>
 </html>
