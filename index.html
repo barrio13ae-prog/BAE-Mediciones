@@ -284,6 +284,9 @@
       r.ul = (st & 128) ? '----' : String(s4.raw);
     }
     if (mode >= 52 && mode <= 54) {
+      // Dibujo de bornes (como el equipo): 0 = conexión correcta; distinto de 0 = L y N invertidos
+      r.conn = fl & 0x03;
+      r.reversed = voltsOn && r.conn !== 0;
       if (voltsOn) {
         r.lpe = String((s3.neg ? -1 : 1) * s3.raw);
         r.npe = String(d[24] + d[25] * 256);
@@ -597,7 +600,7 @@ function drawScreen(m, canvas){
   const by0 = my + mh + 3, bh0 = H - by0;
   const st = parseInt(xval(m, 'PEN STATUS'), 10);
   const on = k => isNaN(st) ? k < 2 : !!(st & (1 << k));
-  const pins = [['L','#e3342f'],['PE','#7ed321'],['N','#7d8ea8']];
+  const pins = [['L','#e3342f'],['PE','#7ed321'],['N','#e3342f']];
   const px = [mx + 52, mx + 196, mx + 340], cy = by0 + 40;
   pins.forEach((p, i) => {
     c.fillStyle = '#ffffff'; c.font = `700 22px ${F}`; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
@@ -860,7 +863,7 @@ function btState(t, on){ const e = $('#btState'); e.textContent = t; e.classList
 function liveToMeas(r){
   const name = (r.FN || []), val = (r.F || []);
   const F = [0,1,2,3].map(i => ({ name: name[i] || '', value: val[i] || '' }));
-  const m = { id: 'bt#' + Date.now(), file: 'Bluetooth ' + new Date().toLocaleTimeString('es-AR'), func: r.func, F, D: [], X: [], ubic: '', obs: '' };
+  const m = { id: 'bt#' + Date.now(), file: 'Bluetooth ' + new Date().toLocaleTimeString('es-AR', { hour12: false }), func: r.func, F, D: [], X: [], ubic: '', obs: '' };
   if(r.mode === 54 && r.F[0] === 'Auto'){
     Object.entries(STEP_MAP).forEach(([k, [mult, ang]]) => {
       const v = BT.rcd[k] || '';
@@ -871,9 +874,15 @@ function liveToMeas(r){
     if(r.v2 !== '' || r.u2) m.D.push({ label: 'D2', value: r.v2, unit: r.u2, mode: r.ac2 ? 'AC' : r.dc2 ? 'DC' : '' });
   }
   if(r.mode >= 52){
-    m.X.push({ label: 'L-PE', value: r.lpe === '---' ? '' : r.lpe, unit: 'V', mode: '' });
-    m.X.push({ label: 'N-PE', value: r.npe === '---' ? '' : r.npe, unit: 'V', mode: '' });
+    const a = r.lpe === '---' ? '' : r.lpe, b = r.npe === '---' ? '' : r.npe;
+    // con polaridad invertida el equipo muestra la tensión de fase del lado de N
+    m.X.push({ label: 'L-PE', value: r.reversed ? b : a, unit: 'V', mode: '' });
+    m.X.push({ label: 'N-PE', value: r.reversed ? a : b, unit: 'V', mode: '' });
     m.X.push({ label: 'L-N', value: r.ln === '---' ? '' : r.ln, unit: 'V', mode: '' });
+  }
+  if(r.mode >= 52 && r.lpe !== '---'){
+    m.X.push({ label: 'PEN STATUS', value: r.reversed ? '6' : '3', unit: '', mode: '' });
+    m.X.push({ label: 'Polaridad', value: r.reversed ? 'INVERTIDA (L↔N)' : 'Correcta', unit: '', mode: '' });
   }
   if(r.ul && r.ul !== '----') m.X.push({ label: 'UL', value: r.ul + ' V', unit: 'V', mode: '' });
   if(r.uf && r.uf !== '----') m.X.push({ label: 'UF', value: r.uf + ' V', unit: 'V', mode: '' });
@@ -885,7 +894,7 @@ function onLiveFrame(bytes){
   const r = window.DT6650.decode(bytes); if(!r || !r.func) return;
   const d = Array.from(bytes).slice(3, 33);
   RAW.last = `${r.func} | F: ${r.F.join('/')} | V1 ${r.v1} ${r.u1} | V2 ${r.v2} ${r.u2} | L-PE ${r.lpe} N-PE ${r.npe} L-N ${r.ln}\n` +
-    `d[21]=${d[21].toString(2).padStart(8,'0')} d[22]=${d[22].toString(2).padStart(8,'0')} d[23]=${d[23].toString(2).padStart(8,'0')} d[28]=${d[28]} d[29]=${d[29]}\n` + hex(bytes);
+    `bornes=${r.conn ?? '-'} ${r.reversed ? '(INVERTIDA)' : ''} d[21]=${d[21].toString(2).padStart(8,'0')} d[22]=${d[22].toString(2).padStart(8,'0')} d[23]=${d[23].toString(2).padStart(8,'0')} d[28]=${d[28]} d[29]=${d[29]}\n` + hex(bytes);
   $('#liveRaw').textContent = RAW.last + (RAW.marks.length ? '\n\n— Muestras marcadas —\n' + RAW.marks.join('\n\n') : '');
   BT.frames++;
   if(BT.last && BT.last.mode !== r.mode) BT.rcd = {};
@@ -898,6 +907,7 @@ function onLiveFrame(bytes){
   else if(r.invalid) st.push('Resultado no válido');
   if(r.hold) st.push('HOLD');
   if(r.hv) st.push('⚠ Tensión peligrosa');
+  if(r.reversed) st.push('⚠ Polaridad invertida: L y N cruzados');
   $('#liveStatus').textContent = st.join(' · ') || 'Listo';
   $('#liveReset').hidden = !(r.mode === 54 && r.F[0] === 'Auto');
 }
@@ -933,7 +943,7 @@ async function btConnect(all){
     else btState('No se pudo conectar: ' + ((e && e.message) || e));
   }
 }
-$('#rawMark').onclick = () => { if(!RAW.last) return; RAW.marks.push(new Date().toLocaleTimeString('es-AR') + '\n' + RAW.last); $('#rawMsg').textContent = `Muestras marcadas: ${RAW.marks.length}`; };
+$('#rawMark').onclick = () => { if(!RAW.last) return; RAW.marks.push(new Date().toLocaleTimeString('es-AR', { hour12: false }) + '\n' + RAW.last); $('#rawMsg').textContent = `Muestras marcadas: ${RAW.marks.length}`; };
 $('#rawCopy').onclick = async () => {
   const txt = 'DT-6650 datos crudos\n\nÚltimo:\n' + RAW.last + (RAW.marks.length ? '\n\nMarcadas:\n' + RAW.marks.join('\n\n') : '');
   try { await navigator.clipboard.writeText(txt); $('#rawMsg').textContent = 'Copiado. Pegalo en el chat.'; }
