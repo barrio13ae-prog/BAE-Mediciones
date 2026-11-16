@@ -141,6 +141,19 @@ function listaHTML(){
     <span>${fmtD(x.fecha)} · $ ${money(x._total || 0)}${x.obra ? ' · ' + esc(x.obra.slice(0, 50)) : ''}</span></div>
     <div class="acts"><button data-abrir="${x.id}">Abrir</button><button data-dup="${x.id}" title="Usar como base">Duplicar</button><button data-borrar="${x.id}" title="Borrar">✕</button></div></div>`).join('');
 }
+const REF = window.BAE_PRECIOS_REF || { fuentes: {}, items: [] };
+const corto = t => t.length > 64 ? t.slice(0, 62) + '…' : t;
+function catOptions(){
+  let h = '<option value="">+ Agregar desde mis precios o referencias…</option>';
+  h += `<optgroup label="Mis precios">${precios.map((x, i) => `<option value="m${i}">${esc(corto(x.desc))} — $ ${money(num(x.precio))}</option>`).join('')}</optgroup>`;
+  const grupos = {};
+  REF.items.forEach((it, i) => { const k = it[0] + '|' + it[1]; (grupos[k] = grupos[k] || []).push(i); });
+  Object.entries(grupos).forEach(([k, idx]) => { const [f, g] = k.split('|'); const fu = REF.fuentes[f] || { nombre: f };
+    h += `<optgroup label="${esc(fu.nombre)} · ${esc(g)}">${idx.map(i => `<option value="r${i}">${esc(corto(REF.items[i][2]))} — $ ${money(conAjuste(REF.items[i][3]))}</option>`).join('')}</optgroup>`; });
+  return h;
+}
+const conAjuste = p => { const a = num(cfg.ajusteRef); return a ? Math.round(p * (1 + a / 100) / 100) * 100 : p; };
+const refNota = () => 'Referencias: ' + Object.values(REF.fuentes).map(f => `${f.nombre} (${f.fecha}${f.nota ? ' – ' + f.nota : ''})`).join(' · ') + '. Solo mano de obra; son orientativas.';
 function render(){
   const ALCCARD = `  <section class="card"><h2><span class="step">${simple() ? 3 : 2}</span> ${simple() ? 'Alcance técnico y normativa (opcional)' : 'Objeto y alcance'}</h2>
     <p class="pz-hint">Describí el trabajo. Línea en blanco = párrafo nuevo · empezá con "- " para viñetas · **texto** sale en negrita.</p>
@@ -155,7 +168,9 @@ function render(){
   const MOCARD = `  <section class="card"><h2><span class="step">${simple() ? 2 : 3}</span> ${simple() ? 'Detalle de servicios / productos' : 'Mano de obra'}</h2>
     <div class="pz-items" id="pzMo">${itemsHTML('mo')}</div>
     <div class="row" style="margin-top:10px"><button data-add="mo">+ Ítem vacío</button>
-      <select id="pzCat" style="flex:1;min-width:200px"><option value="">+ Agregar desde mis precios…</option>${precios.map((x, i) => `<option value="${i}">${esc(x.desc.length > 70 ? x.desc.slice(0, 68) + '…' : x.desc)} — $ ${money(num(x.precio))}</option>`).join('')}</select></div>
+      <select id="pzCat" style="flex:1;min-width:200px">${catOptions()}</select></div>
+    <div class="grid" style="margin-top:8px"><label>Ajuste sobre precios de referencia (%)<input id="pzAjuste" value="${esc(cfg.ajusteRef || '')}" inputmode="decimal" placeholder="ej. 10 para sumar 10%"></label></div>
+    <p class="pz-hint">${refNota()}</p>
     <details style="margin-top:10px"><summary>Mis precios (${precios.length})</summary>
       <p class="pz-hint">Al guardar un presupuesto, sus ítems se agregan o actualizan acá con el último precio. Tocá ✕ para quitar uno.</p>
       <div class="pz-list">${precios.map((x, i) => `<div class="pz-row"><div><b style="font-weight:500">${esc(x.desc)}</b><span>$ ${money(num(x.precio))}</span></div><div class="acts"><button data-pdel="${i}">✕</button></div></div>`).join('')}</div>
@@ -239,7 +254,11 @@ function bind(){
     if(was !== P.formato && (P.condiciones === COND_SIMPLE || P.condiciones === COND_DEF)) P.condiciones = P.formato === 'simple' ? COND_SIMPLE : COND_DEF;
     guardarActual(); render();
   });
-  const cat = $('#pzCat', v); if(cat) cat.onchange = () => { const x = precios[+cat.value]; if(!x) return;
+  const aj = $('#pzAjuste', v); if(aj) aj.onchange = () => { cfg.ajusteRef = aj.value.trim(); store.set('bae.presu.cfg', cfg); render(); };
+  const cat = $('#pzCat', v); if(cat) cat.onchange = () => { const val = cat.value; let x = null;
+    if(val[0] === 'm') x = precios[+val.slice(1)];
+    else if(val[0] === 'r'){ const it = REF.items[+val.slice(1)]; if(it) x = { desc: it[2], precio: conAjuste(it[3]) }; }
+    if(!x) return;
     const empty = P.mo.findIndex(r => !String(r.desc).trim() && !num(r.precio));
     const row = { desc: x.desc, cant: 1, precio: String(x.precio) }; if(empty >= 0) P.mo[empty] = row; else P.mo.push(row);
     guardarActual(); render(); const t = $$('#pzMo .pz-item', v).pop(); if(t){ const c = t.querySelector('[data-f="cant"]'); t.scrollIntoView({ block: 'center' }); c.focus(); c.select(); } };
