@@ -69,6 +69,13 @@
   .badge.bad{background:var(--bad-bg);color:var(--bad)}
   .badge.na{background:var(--neutral-bg);color:var(--muted)}
   .empty{color:var(--muted);padding:10px 0}
+  .bt{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}
+  .bt-state{font-size:14px;color:var(--muted)}
+  .bt-state.on{color:var(--ok);font-weight:600}
+  .live{display:grid;grid-template-columns:minmax(260px,420px) 1fr;gap:18px;margin-top:14px}
+  @media (max-width:720px){.live{grid-template-columns:1fr}}
+  .live canvas{width:100%;height:auto;border-radius:6px;background:#000}
+  .live-status{font-size:14px;margin-bottom:10px;min-height:20px}
   .msg{font-size:14px;color:var(--muted);margin-top:10px;min-height:20px}
   .msg.err{color:var(--bad)}
   .note{font-size:13px;color:var(--muted);margin-top:8px}
@@ -98,6 +105,28 @@
     </div>
   </details>
   <div class="msg" id="loadMsg"></div>
+  <div class="bt" id="btBox">
+    <h3 style="margin:14px 0 6px;font-size:15px">O conectá el equipo por Bluetooth</h3>
+    <div class="row">
+      <button class="primary" id="btConnect">Conectar DT-6650</button>
+      <button id="btDisconnect" hidden>Desconectar</button>
+      <span class="bt-state" id="btState">Sin conectar</span>
+      <button class="link" id="btAll">¿No aparece? Ver todos los equipos</button>
+    </div>
+    <p class="note" id="btNote">Funciona en Chrome para Android y en Chrome/Edge de PC, con la app abierta desde su link (no dentro de Claude). En iPhone no es posible: Safari no permite Bluetooth en páginas web.</p>
+    <div class="live" id="liveBox" hidden>
+      <canvas id="liveCanvas"></canvas>
+      <div class="live-side">
+        <div class="live-status" id="liveStatus"></div>
+        <label>Ubicación / circuito<input id="liveUbic" placeholder="ej. Tomacorriente cocina"></label>
+        <div class="row" style="margin-top:10px">
+          <button class="primary" id="liveSave">Guardar medición</button>
+          <button id="liveReset" hidden>Reiniciar RCD automático</button>
+        </div>
+        <p class="note">Guardá cuando el equipo termine la prueba. La medición se suma a la lista y al informe.</p>
+      </div>
+    </div>
+  </div>
 </section>
 
 <section class="card">
@@ -150,6 +179,145 @@
 </section>
 
 </main>
+<script>
+// Decodificador de los paquetes Bluetooth del CEM DT-6650 (36 bytes: 7E .. F5).
+// Escrito a partir del análisis de la app Meterbox Pro, para uso con el propio equipo.
+(function (root) {
+  'use strict';
+  const FUNC = { 49: 'EARTH', 50: 'INSULATION', 51: 'LOW OHM', 52: 'VOLTAGE/PHASE', 53: 'LOOP/PFC', 54: 'RCD' };
+  const T = {
+    insV: ['125V', '250V', '500V', '1000V'],
+    insLim: ['0.125MΩ', '0.25MΩ', '0.5MΩ', '1.0MΩ', '2.0MΩ', '5.0MΩ', '10.0MΩ', '20.0MΩ', '50.0MΩ', '100MΩ', '200MΩ'],
+    onoff: ['OFF', 'ON'],
+    lowLim: ['0.5Ω', '1.0Ω', '2.0Ω', '5.0Ω', '10.0Ω', '20.0Ω', '50.0Ω', '100.0Ω'],
+    volt: ['L-PE', 'N-PE', 'L-N', 'Phase'],
+    loop: ['L-PE', 'L-N'], loopI: ['NO Trip', 'Hi Amp'],
+    rcd: ['Auto', 'X1/2', 'X1', 'X2', 'X5', 'RAMP'],
+    rcdI: ['30mA', '100mA', '300mA', '500mA', '650mA', '1000mA', '10mA'],
+    rcdT: ['AC G', 'AC S', 'DC G', 'DC S']
+  };
+  // Pasos del RCD automático (byte de estado, nibble bajo)
+  const RCD_STEP = { 1: 'X1/2 (0)', 2: 'X1/2 (180)', 3: 'X1 (0)', 4: 'X1 (180)', 7: 'X5 (0)', 8: 'X5 (180)' };
+
+  function fmt(raw, dec, neg, full) {
+    let v = raw; for (let i = 0; i < dec; i++) v /= 10;
+    if (neg) v = -v;
+    let s = v.toFixed(dec);
+    if (!full && s.length > 5) { s = s.slice(0, 5); if (s.endsWith('.')) s = s.slice(0, 4); }
+    return s;
+  }
+  let lastF = [0, 0, 0, 0];
+  function slot(d, i) { // valor de 3 bytes: bajo, alto, [signo|unidad(3b)|decimales(4b)]
+    const f = d[i + 2];
+    return { raw: d[i] + d[i + 1] * 256, f: f, neg: !!(f & 0x80), dec: f & 0x0f, hi: (f >> 4) & 7 };
+  }
+  function pick(arr, i) { return i >= 0 && i < arr.length ? arr[i] : ''; }
+
+  function decode(bytes) {
+    const b = Array.from(bytes, x => x & 0xff);
+    if (b.length < 36 || b[0] !== 0x7e || b[35] !== 0xf5 || b[2] !== 0x1e) return null;
+    const d = b.slice(3, 33);
+    if (d[5] !== 0x55 || d[6] !== 0xaa) return null;
+    const mode = d[7];
+    // Durante una prueba (byte 4 = 1) el equipo mantiene los ajustes de teclas anteriores
+    if (d[4] === 1) { d[0] = lastF[0]; d[1] = lastF[1]; d[2] = lastF[2]; d[3] = lastF[3]; }
+    else lastF = [d[0], d[1], d[2], d[3]];
+    if (!FUNC[mode]) return { mode, func: 'Desconocida', raw: b };
+    const st = d[22], fl = d[21], ts = d[23];
+    const r = {
+      mode, func: FUNC[mode], F: ['', '', '', ''], FN: ['', '', '', ''],
+      v1: '', u1: '', v2: '', u2: '', lpe: '', npe: '', ln: '', ul: '', uf: '',
+      hold: !!(fl & 2), lock: !!(fl & 64), warn: !!(fl & 128), hv: !!(ts & 1),
+      testing: !!(ts & 2), invalid: !!(ts & 4), rcdStep: null, raw: b
+    };
+    const s1 = slot(d, 9), s2 = slot(d, 12), s3 = slot(d, 15), s4 = slot(d, 18);
+    const ol1 = st & 1, ol2 = st & 2, nd1 = st & 16, nd2 = st & 32;
+    const val = (s, ol, nd, sign) => ol ? 'OL' : nd ? '---' : fmt(s.raw, s.dec, sign && s.neg);
+    const voltsOn = !!(fl & 8);
+
+    if (mode === 49 || mode === 50 || mode === 51) {
+      r.v1 = val(s1, ol1, nd1, true); r.v2 = val(s2, ol2, nd2, true);
+      if (mode === 49) { r.u1 = 'Ω'; r.u2 = 'mA'; r.ac2 = true; r.FN[3] = 'ZERO'; }
+      if (mode === 50) {
+        r.u1 = (d[11] & 0x70) ? 'GΩ' : 'MΩ'; r.u2 = 'V';
+        r.FN = ['Tensión', 'Zumbido', 'Bloqueo', 'Límite'];
+        r.F = [pick(T.insV, d[0]), pick(T.onoff, d[1]), pick(T.onoff, d[2]), pick(T.insLim, d[3])];
+      }
+      if (mode === 51) {
+        r.u1 = 'Ω'; r.u2 = 'mA'; r.dc2 = true;
+        r.FN = ['Continuidad', 'Zumbido', '', 'CERO'];
+        r.F = [pick(T.lowLim, d[0]), pick(T.onoff, d[1]), '', ''];
+      }
+    } else if (mode === 52) {
+      r.v1 = val(s1, ol1, nd1, true);
+      r.u1 = ['V', 'V', '---', '1.2.3', '2.1.3'][s1.hi] || '';
+      if (s1.hi === 0 && !ol1 && !nd1) r.v1 = '<' + r.v1;
+      r.v2 = val(s2, ol2, nd2, true);
+      r.u2 = ['Hz', 'kHz', 'Hz', ''][s2.hi] || '';
+      if (s2.hi === 2 && !ol2) r.v2 = '---';
+      r.FN = ['V/Phase', '', '', '']; r.F = [pick(T.volt, d[0]), '', '', ''];
+    } else if (mode === 53) {
+      r.v1 = val(s1, ol1, nd1, false); r.v2 = val(s2, ol2, nd2, false);
+      r.u1 = ['Ω', 'mΩ', 'Ω'][s1.hi] || ''; if (s1.hi === 2 && !ol1) r.v1 = '---';
+      r.u2 = ['A', 'kA', 'A', '', 'Ω'][s2.hi] || ''; if (s2.hi === 2 && !ol2) r.v2 = '---';
+      if (s1.neg && r.v1 !== 'OL' && r.v1 !== '---') r.v1 = '>' + r.v1;
+      r.FN = ['Loop/Pfc', 'Current', '', 'ZERO'];
+      r.F = [pick(T.loop, d[0]), pick(T.loopI, d[1]), '', ''];
+      r.ul = (st & 64) ? '----' : String(s4.raw);
+    } else if (mode === 54) {
+      r.FN = ['RCD', 'Corriente', 'Tipo de RCD', ''];
+      const curr = d[0] === 4 ? ['30mA', '100mA', '10mA'] : (d[0] === 3 || d[0] === 5) ? ['30mA', '100mA', '300mA', '500mA', '650mA', '10mA'] : T.rcdI;
+      r.F = [pick(T.rcd, d[0]), pick(curr, d[1]), pick(T.rcdT, d[2]), ''];
+      const f = d[11], unitSel = (f >> 5) & 3, dec1 = (f >> 4) & 1;
+      let t = unitSel === 2 ? '----' : ol1 ? 'OL' : nd1 ? '----' : fmt(s1.raw, dec1, false, true);
+      if ((f & 0x80) && t !== 'OL' && t !== '----') t = '>' + t;
+      r.v1 = t; r.u1 = d[0] === 5 || unitSel === 1 ? 'mA' : unitSel === 3 ? '' : 'ms';
+      const step = f & 0x0f;
+      if (d[0] === 0 && (!(ts & 6) || step === 1)) {
+        if (RCD_STEP[step]) r.rcdStep = { name: RCD_STEP[step], value: (unitSel === 2 || nd1) ? '---' : t };
+      }
+      r.uf = (st & 32) || s2.hi === 2 ? '----' : (s2.raw / 10).toFixed(1);
+      r.ul = (st & 128) ? '----' : String(s4.raw);
+    }
+    if (mode >= 52 && mode <= 54) {
+      if (voltsOn) {
+        r.lpe = String((s3.neg ? -1 : 1) * s3.raw);
+        r.npe = String(d[24] + d[25] * 256);
+        r.ln = String(d[26] + d[27] * 256);
+      } else { r.lpe = r.npe = r.ln = '---'; }
+    }
+    return r;
+  }
+
+  // Ensamblador de paquetes: junta los fragmentos BLE y devuelve paquetes completos.
+  function Framer(onFrame) {
+    let buf = [];
+    return function push(chunk) {
+      for (const x of chunk) buf.push(x & 0xff);
+      while (buf.length) {
+        const s = buf.indexOf(0x7e);
+        if (s < 0) { buf = []; return; }
+        if (s > 0) buf = buf.slice(s);
+        if (buf.length < 36) return;
+        if (buf[35] === 0xf5) { onFrame(buf.slice(0, 36)); buf = buf.slice(36); }
+        else buf = buf.slice(1);
+      }
+    };
+  }
+
+  const BLE = {
+    services: ['0000fff0-0000-1000-8000-00805f9b34fb', '0000fe60-0000-1000-8000-00805f9b34fb',
+               '0000a002-0000-1000-8000-00805f9b34fb', '0000ffb0-0000-1000-8000-00805f9b34fb'],
+    notify: ['0000fff2-0000-1000-8000-00805f9b34fb', '0000fe62-0000-1000-8000-00805f9b34fb',
+             '0000c305-0000-1000-8000-00805f9b34fb', '0000ffb2-0000-1000-8000-00805f9b34fb'],
+    names: ['DT-6650', 'DT6650', 'CPI6650', 'DT-6651', 'DT6651']
+  };
+
+  root.DT6650 = { decode, Framer, BLE, RCD_STEP };
+  if (typeof module !== 'undefined') module.exports = root.DT6650;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
 <script>
 (function(){
 'use strict';
@@ -488,7 +656,7 @@ function renderAll(){ renderChips(); renderLimits(); renderMeas(); ['#pdfBtn','#
 function renderChips(){
   $('#fileChips').innerHTML = state.files.map(f => `<span class="chip">${esc(f)} <button title="Quitar" data-rm="${esc(f)}">×</button></span>`).join('');
   $('#fileChips').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
-    const f = b.dataset.rm; state.files = state.files.filter(x => x !== f); state.meas = state.meas.filter(m => m.file !== f); renderAll();
+    const f = b.dataset.rm; state.files = state.files.filter(x => x !== f); state.meas = state.meas.filter(m => f === 'Bluetooth' ? !m.id.startsWith('bt#') : m.file !== f); renderAll();
   });
 }
 function renderLimits(){
@@ -679,6 +847,96 @@ $('#pdfBtn').onclick = async () => {
 
 // redibujar al cargar la tipografía
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if(state.meas.length) renderMeas(); });
+
+/* ---------- Bluetooth en vivo ---------- */
+const BT = { dev: null, chars: [], last: null, rcd: {}, frames: 0 };
+const STEP_MAP = { 'X1/2 (0)': ['1/2', 0], 'X1/2 (180)': ['1/2', 180], 'X1 (0)': ['1', 0], 'X1 (180)': ['1', 180], 'X5 (0)': ['5', 0], 'X5 (180)': ['5', 180] };
+function btSupported(){ return !!(navigator.bluetooth && navigator.bluetooth.requestDevice); }
+function btState(t, on){ const e = $('#btState'); e.textContent = t; e.classList.toggle('on', !!on); }
+function liveToMeas(r){
+  const name = (r.FN || []), val = (r.F || []);
+  const F = [0,1,2,3].map(i => ({ name: name[i] || '', value: val[i] || '' }));
+  const m = { id: 'bt#' + Date.now(), file: 'Bluetooth ' + new Date().toLocaleTimeString('es-AR'), func: r.func, F, D: [], X: [], ubic: '', obs: '' };
+  if(r.mode === 54 && r.F[0] === 'Auto'){
+    Object.entries(STEP_MAP).forEach(([k, [mult, ang]]) => {
+      const v = BT.rcd[k] || '';
+      m.D.push({ label: '×' + mult + ' ' + ang + '°', mult, ang, value: v.replace(/^>/, '>'), unit: 'ms', mode: '' });
+    });
+  } else {
+    if(r.v1 !== '' || r.u1) m.D.push({ label: 'D1', value: r.v1, unit: r.u1, mode: '' });
+    if(r.v2 !== '' || r.u2) m.D.push({ label: 'D2', value: r.v2, unit: r.u2, mode: r.ac2 ? 'AC' : r.dc2 ? 'DC' : '' });
+  }
+  if(r.mode >= 52){
+    m.X.push({ label: 'L-PE', value: r.lpe === '---' ? '' : r.lpe, unit: 'V', mode: '' });
+    m.X.push({ label: 'N-PE', value: r.npe === '---' ? '' : r.npe, unit: 'V', mode: '' });
+    m.X.push({ label: 'L-N', value: r.ln === '---' ? '' : r.ln, unit: 'V', mode: '' });
+  }
+  if(r.ul && r.ul !== '----') m.X.push({ label: 'UL', value: r.ul + ' V', unit: 'V', mode: '' });
+  if(r.uf && r.uf !== '----') m.X.push({ label: 'UF', value: r.uf + ' V', unit: 'V', mode: '' });
+  return m;
+}
+function onLiveFrame(bytes){
+  const r = window.DT6650.decode(bytes); if(!r || !r.func) return;
+  BT.frames++;
+  if(BT.last && BT.last.mode !== r.mode) BT.rcd = {};
+  if(r.mode === 54 && r.rcdStep) BT.rcd[r.rcdStep.name] = r.rcdStep.value;
+  BT.last = r;
+  const m = liveToMeas(r);
+  drawScreen(m, $('#liveCanvas'));
+  const st = [];
+  if(r.testing) st.push('Midiendo…');
+  else if(r.invalid) st.push('Resultado no válido');
+  if(r.hold) st.push('HOLD');
+  if(r.hv) st.push('⚠ Tensión peligrosa');
+  $('#liveStatus').textContent = st.join(' · ') || 'Listo';
+  $('#liveReset').hidden = !(r.mode === 54 && r.F[0] === 'Auto');
+}
+async function btConnect(all){
+  if(!btSupported()){ btState('Este navegador no permite Bluetooth en páginas web.'); return; }
+  const D = window.DT6650.BLE;
+  try {
+    btState('Buscando equipo…');
+    const dev = all
+      ? await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: D.services })
+      : await navigator.bluetooth.requestDevice({ filters: D.names.map(n => ({ namePrefix: n })), optionalServices: D.services });
+    BT.dev = dev;
+    dev.addEventListener('gattserverdisconnected', () => { btState('Desconectado'); $('#btDisconnect').hidden = true; $('#btConnect').hidden = false; });
+    btState('Conectando a ' + (dev.name || 'equipo') + '…');
+    const server = await dev.gatt.connect();
+    const framer = window.DT6650.Framer(onLiveFrame);
+    BT.chars = [];
+    for(let i = 0; i < D.services.length; i++){
+      try {
+        const svc = await server.getPrimaryService(D.services[i]);
+        const ch = await svc.getCharacteristic(D.notify[i]);
+        ch.addEventListener('characteristicvaluechanged', ev => framer(new Uint8Array(ev.target.value.buffer)));
+        await ch.startNotifications(); BT.chars.push(ch);
+      } catch(e){ /* servicio no presente en este equipo */ }
+    }
+    if(!BT.chars.length){ btState('Conectado, pero el equipo no ofrece el servicio de datos esperado.'); return; }
+    btState('Conectado a ' + (dev.name || 'DT-6650'), true);
+    $('#btConnect').hidden = true; $('#btDisconnect').hidden = false; $('#liveBox').hidden = false;
+    $('#liveStatus').textContent = 'Esperando datos del equipo… hacé una medición.';
+  } catch(e){
+    if(e && e.name === 'NotFoundError') btState('Búsqueda cancelada.');
+    else if(e && e.name === 'SecurityError') btState('El navegador bloqueó el Bluetooth en esta vista. Abrí la app desde su link.');
+    else btState('No se pudo conectar: ' + ((e && e.message) || e));
+  }
+}
+$('#btConnect').onclick = () => btConnect(false);
+$('#btAll').onclick = () => btConnect(true);
+$('#btDisconnect').onclick = () => { try { BT.dev && BT.dev.gatt.disconnect(); } catch(e){} };
+$('#liveReset').onclick = () => { BT.rcd = {}; if(BT.last) onLiveFrame(BT.last.raw); };
+$('#liveSave').onclick = () => {
+  if(!BT.last){ setMsg('#loadMsg', 'Todavía no llegaron datos del equipo.', true); return; }
+  const m = liveToMeas(BT.last); m.ubic = $('#liveUbic').value.trim();
+  state.meas.push(m); state.files = state.files.includes('Bluetooth') ? state.files : state.files.concat('Bluetooth');
+  if(!state.limits[m.func]) state.limits[m.func] = isRcd(m) ? { x1: '300', x5: '40', half: 'si' } : { lim: '', crit: defaultCrit(m.func) };
+  setMsg('#loadMsg', `Medición guardada (${m.func}${m.ubic ? ' – ' + m.ubic : ''}).`);
+  $('#liveUbic').value = ''; renderAll();
+};
+if(!btSupported()) { $('#btConnect').disabled = true; $('#btAll').hidden = true; btState('No disponible en este navegador.'); }
+
 getDownloads();
 // compartido con el módulo de protocolo SRT y diseño de PAT
 window.__dt = { state, save, isRcd, rcdVals, xval, num };
