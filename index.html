@@ -161,20 +161,13 @@
       <label>Dirección<input data-k="direccion" placeholder="ej. 25 de Mayo 1520, Zapala"></label>
       <label>Fecha de medición<input type="date" data-k="fecha"></label>
     </div>
-    <div class="grid" style="margin-top:12px">
-      <label>Técnico responsable<input data-k="tecnico"></label>
-      <label>Matrícula<input data-k="matricula"></label>
+    <div hidden>
+      <input data-k="tecnico"><input data-k="matricula"><input data-k="eqNombre"><input data-k="eqModelo"><input data-k="serie"><input data-k="calibracion">
     </div>
-    <h3 class="sub">Equipo de medición</h3>
-    <div class="grid">
-      <label>Nombre<input data-k="eqNombre" data-def="CEM Multifunction Installation Tester"></label>
-      <label>Modelo<input data-k="eqModelo" data-def="DT-6650"></label>
-      <label>N° de serie<input data-k="serie" data-def="2603030240"></label>
-      <label>Última calibración<input data-k="calibracion" placeholder="ej. 03/2026"></label>
-    </div>
+    <div class="fijos" id="infFijos" style="margin-top:12px"></div>
   </div>
   <label style="margin-top:12px">Observaciones generales<textarea data-k="observaciones" style="font-family:inherit;min-height:70px"></textarea></label>
-  <p class="note">Los datos del técnico y del equipo quedan guardados en este navegador para el próximo informe.</p>
+  <p class="note">Tus datos y los del equipo son fijos (se ven en Inicio → Mis datos). La fecha de calibración se carga ahí.</p>
 </section>
 
 <section class="card">
@@ -812,14 +805,13 @@ $('#pdfBtn').onclick = async () => {
   const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit:'mm', format:'a4' });
   const r = state.report, PW = 210, M = 15; let y = M;
   const blue = [11,122,75];
-  const footer = () => { const n = doc.getNumberOfPages(); for(let p=1;p<=n;p++){ doc.setPage(p); doc.setFontSize(8); doc.setTextColor(120); doc.text(pdfSafe([r.tecnico ? r.tecnico + (r.matricula ? ' (Mat. ' + r.matricula + ')' : '') : '', [r.eqModelo, r.serie ? 'N° ' + r.serie : ''].filter(Boolean).join(' ')].filter(Boolean).join('  ·  ')), M, 290); doc.text(`Página ${p} de ${n}`, PW-M, 290, {align:'right'}); } };
+  const footer = () => { const n = doc.getNumberOfPages(); for(let p=1;p<=n;p++){ doc.setPage(p); doc.setFontSize(8); doc.setTextColor(120); doc.text(pdfSafe([r.tecnico ? r.tecnico + (r.matricula ? ' (Matrícula: ' + r.matricula + ')' : '') : '', [r.eqModelo, r.serie ? 'N° ' + r.serie : ''].filter(Boolean).join(' ')].filter(Boolean).join('  ·  ')), M, 290); doc.text(`Página ${p} de ${n}`, PW-M, 290, {align:'right'}); } };
   const need = h => { if(y + h > 280){ doc.addPage(); y = M; } };
 
   doc.setFillColor(...blue); doc.rect(0,0,PW,4,'F');
   const pf = (typeof window.__perfil === 'function') ? window.__perfil() : null;
   if(pf && pf.empresa){
-    doc.setFillColor(...blue); doc.roundedRect(M, y, 11, 11, 2, 2, 'F');
-    doc.setFillColor(255,211,77); doc.triangle(M+6.6, y+1.8, M+3.6, y+6.4, M+6, y+6.4, 'F'); doc.triangle(M+6, y+6.4, M+5, y+9.4, M+7.6, y+4.8, 'F'); doc.rect(M+5.4, y+4.8, 2.2, 1.6, 'F');
+    if(window.BAE_LOGO) doc.addImage(window.BAE_LOGO.markPng, 'PNG', M, y, 11, 11);
     doc.setTextColor(...blue); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(pdfSafe(pf.empresa), M+14, y+4.6);
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(100); doc.text(pdfSafe(pf.credenciales.join('  ·  ')), M+14, y+9.2, { maxWidth: PW - 2*M - 14 });
     if(pf.contacto){ doc.setFontSize(8.5); doc.text(pdfSafe(pf.contacto), PW-M, y+4.6, { align:'right' }); }
@@ -830,7 +822,7 @@ $('#pdfBtn').onclick = async () => {
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90);
   y += 2;
   const info = [['Empresa', r.empresa],['CUIT', r.cuit],['Obra / instalación', r.obra],['Dirección', r.direccion],['Fecha de medición', fmtDate(r.fecha)],
-                ['Técnico responsable', (r.tecnico || '') + (r.matricula ? (r.tecnico ? '  ·  ' : '') + 'Mat. ' + r.matricula : '')],
+                ['Técnico responsable', (r.tecnico || '') + (r.matricula ? (r.tecnico ? '  ·  ' : '') + 'Matrícula: ' + r.matricula : '')],
                 ['Equipo de medición', [r.eqNombre, r.eqModelo].filter(Boolean).join(' ')],['N° de serie', r.serie],['Última calibración', r.calibracion]].filter(x => x[1]);
   doc.setDrawColor(225); doc.setFillColor(246,247,249);
   const ih = info.length * 6 + 6; doc.roundedRect(M, y, PW-2*M, ih, 2, 2, 'F'); y += 7;
@@ -897,7 +889,7 @@ $('#pdfBtn').onclick = async () => {
   // firma
   need(30); y += 14; doc.setDrawColor(150); doc.line(PW-M-70, y, PW-M, y);
   doc.setFontSize(9); doc.setTextColor(90); doc.text(pdfSafe(r.tecnico || 'Firma y aclaración'), PW-M-35, y+5, {align:'center'});
-  if(r.matricula) doc.text(pdfSafe('Mat. ' + r.matricula), PW-M-35, y+10, {align:'center'});
+  if(r.matricula) doc.text(pdfSafe('Matrícula: ' + r.matricula), PW-M-35, y+10, {align:'center'});
   if(pf && pf.empresa) doc.text(pdfSafe(pf.empresa), PW-M-35, y + (r.matricula ? 15 : 10), {align:'center'});
   footer();
   await save(reportName() + '.pdf', doc.output('blob'));
@@ -1036,7 +1028,9 @@ getDownloads();
 window.__dt = { state, save, isRcd, rcdVals, xval, num };
 })();
 </script>
-<script src="srt.js?v=8"></script>
+<script src="logo.js?v=1"></script>
+<script src="srt.js?v=10"></script>
+<script src="presu.js?v=2"></script>
 <script>
 // instalable como app (GitHub Pages); dentro de Claude simplemente se omite
 if('serviceWorker' in navigator && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)){

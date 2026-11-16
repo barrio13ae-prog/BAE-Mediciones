@@ -30,8 +30,12 @@ css.textContent = `
   .view{display:grid;gap:18px}
   .view[hidden]{display:none}
   .home{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+  .fijos{display:grid;gap:8px}
+  .fijos div{display:grid;gap:2px;padding:8px 12px;border-radius:10px;background:var(--neutral-bg)}
+  .fijos span{font-size:12px;color:var(--muted)}
+  .fijos b{font-weight:600;font-size:14.5px}
   .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-  @media (min-width:900px){.tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  @media (min-width:900px){.tiles{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}}
   .tile{display:flex;flex-direction:column;align-items:flex-start;gap:10px;text-decoration:none;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 16px;min-height:170px;transition:transform .12s, box-shadow .12s, border-color .12s}
   .tile:hover,.tile:focus-visible{border-color:var(--accent);box-shadow:0 6px 18px rgba(11,122,75,.18);transform:translateY(-2px);outline:none}
   .tile:active{transform:scale(.98)}
@@ -95,27 +99,38 @@ const VIEWS = {
   pat: { el: vPat, title: 'Diseño de puesta a tierra', sub: 'Resistividad por Wenner (SEW 4235 ER) y selección de la PAT según AEA 90364.' }
 };
 /* ---------- perfil del profesional ---------- */
-const PERFIL_DEF = { empresa: 'BAE Servicios de Instalaciones', nombre: 'Alexis Emanuel Barrionuevo', titulo: 'Técnico electromecánico',
-  matTec: 'TECA 01789', matGas: '', matPlo: '', tel: '2942-626704', email: '', localidad: 'Zapala, Neuquén' };
-let perfil = Object.assign({}, PERFIL_DEF, store.get('bae.perfil', {}));
-if(perfil.empresa === 'BAE Servicio de Instalaciones') perfil.empresa = PERFIL_DEF.empresa;
-Object.keys(PERFIL_DEF).forEach(k => { if(!perfil[k] && PERFIL_DEF[k]) perfil[k] = PERFIL_DEF[k]; });
+const PERFIL_DEF = { empresa: 'BAE Servicios de Instalaciones', servicio: 'Servicio de instalaciones y mantenimiento',
+  nombre: 'Alexis Emanuel Barrionuevo', titulo: 'Técnico electromecánico', matTec: 'TECA 01789',
+  tel: '2942-626704', email: 'contacto@baeinstalaciones.com.ar', localidad: 'Zapala, Neuquén',
+  banco: 'Banco Macro', titular: 'Alexis Emanuel Barrionuevo',
+  eqNombre: 'CEM Multifunction Installation Tester', eqModelo: 'DT-6650', serie: '2603030240' };
+// Datos propios fijos. Solo se cargan una vez (y quedan en este teléfono) los que no van al código público: alias, CBU y la última calibración.
+const UNAVEZ_DEF = { alias: '', cbu: '', calibracion: '' };
+const unaVez = Object.assign({}, UNAVEZ_DEF, store.get('bae.unavez', {}));
+(() => { const old = store.get('bae.presu.cfg', {}) || {}; const rep = store.get('dt6650.report', {}) || {};
+  if(!unaVez.alias && old.alias) unaVez.alias = old.alias; if(!unaVez.cbu && old.cbu) unaVez.cbu = old.cbu;
+  if(!unaVez.calibracion && rep.calibracion) unaVez.calibracion = rep.calibracion; })();
+const perfil = Object.assign({}, PERFIL_DEF, unaVez);
 // por ahora la app es de mediciones eléctricas: solo se muestra la matrícula de electricista
-const credenciales = () => [perfil.titulo + ' matriculado' + (perfil.matTec ? ' (Mat. ' + perfil.matTec + ')' : '')];
-const aclaracion = () => [perfil.nombre, perfil.titulo + (perfil.matTec ? ' — Mat. ' + perfil.matTec : '')].filter(Boolean).join(' — ');
+const credenciales = () => [perfil.titulo + (perfil.matTec ? ' · Matrícula: ' + perfil.matTec : '')];
+const aclaracion = () => [perfil.nombre, perfil.titulo + (perfil.matTec ? ' — Matrícula: ' + perfil.matTec : '')].filter(Boolean).join(' — ');
 window.__perfil = () => Object.assign({}, perfil, { credenciales: credenciales(), aclaracion: aclaracion(),
   contacto: [perfil.tel, perfil.email, perfil.localidad].filter(Boolean).join(' · ') });
-function syncInforme(force){
-  const set = (k, v) => { const el = document.querySelector('#reportForm [data-k="' + k + '"]'); if(el && (force || !el.value) && v){ el.value = v; el.dispatchEvent(new Event('input')); } };
+function syncInforme(){
+  const set = (k, v) => { const el = document.querySelector('#reportForm [data-k="' + k + '"]'); if(el){ el.value = v || ''; el.dispatchEvent(new Event('input')); } };
   set('tecnico', perfil.nombre + (perfil.titulo ? ' — ' + perfil.titulo : '')); set('matricula', perfil.matTec);
+  set('eqNombre', perfil.eqNombre); set('eqModelo', perfil.eqModelo); set('serie', perfil.serie); set('calibracion', perfil.calibracion);
+  const fx = document.getElementById('infFijos');
+  if(fx) fx.innerHTML = `<div><span>Técnico responsable</span><b>${esc(perfil.nombre)} — ${esc(perfil.titulo)} · Matrícula: ${esc(perfil.matTec)}</b></div>
+    <div><span>Equipo de medición</span><b>${esc(perfil.eqNombre)} ${esc(perfil.eqModelo)} · N° de serie ${esc(perfil.serie)}${perfil.calibracion ? ' · Última calibración: ' + esc(perfil.calibracion) : ''}</b></div>`;
 }
-const LOGO = `<svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><rect x="1" y="1" width="46" height="46" rx="11" fill="var(--accent)"/><path d="M27 7 15 27h8l-3 14 13-21h-8z" fill="#ffd34d"/></svg>`;
+const LOGO = (window.BAE_LOGO ? window.BAE_LOGO.mark.replace('<svg ', '<svg width="44" height="44" aria-hidden="true" ') : '');
 header.innerHTML = `<div class="brand">${LOGO}<div><div class="bname" id="bName"></div><div class="bcred" id="bCred"></div></div></div>
   <h1 id="appTitle"></h1><p id="appSub"></p>
   <nav class="tabs"><a href="#inicio" data-v="inicio">Inicio</a><a href="#vivo" data-v="vivo">Ver multifunción CEM</a><a href="#informe" data-v="informe">Informe DT-6650</a><a href="#srt" data-v="srt">Protocolo SRT 900/15</a><a href="#pat" data-v="pat">Diseño de PAT</a></nav>
   <a class="back" id="backHome" href="#inicio">← Inicio</a>`;
 function renderBrand(){ $('#bName').textContent = perfil.empresa || 'BAE Servicios de Instalaciones'; $('#bCred').textContent = [perfil.nombre, ...credenciales()].filter(Boolean).join(' · '); }
-renderBrand(); syncInforme(false);
+renderBrand(); syncInforme();
 function route(){
   const h = (location.hash || '').replace('#', '');
   const k = VIEWS[h] ? h : 'inicio';
@@ -137,19 +152,29 @@ vHome.innerHTML = `<nav class="tiles" aria-label="Funciones">
   <a class="tile" href="#informe"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5"/><path d="M8 13h8M8 17h5"/></svg></div><b>Informe DT-6650</b><span>Mediciones, límites e informe en PDF.</span></a>
   <a class="tile" href="#srt"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2"/><path d="M9 3.5V2.5h6v1"/><path d="M8.5 11l2 2 4-4"/><path d="M8.5 17h7"/></svg></div><b>Protocolo SRT 900/15</b><span>PAT, continuidad y diferenciales. Formulario oficial.</span></a>
   <a class="tile" href="#pat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5v11"/><path d="M5 13.5h14"/><path d="M7.5 17h9"/><path d="M10 20.5h4"/></svg></div><b>Diseño de PAT</b><span>Resistividad Wenner y selección de la puesta a tierra.</span></a>
+  <a class="tile" href="#presu"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></div><b>Presupuestos</b><span>Mano de obra, materiales y condiciones, en PDF.</span></a>
 </nav>
 <section class="card" id="perfilCard"><h2>Mis datos</h2>
-  <p class="hint" style="margin-top:0">Se usan en el encabezado y la firma de los informes y del protocolo SRT. Quedan guardados en este navegador.</p>
-  <div class="grid" style="margin-top:10px">
-    <label>Empresa<input data-pf="empresa"></label><label>Nombre y apellido<input data-pf="nombre"></label><label>Título<input data-pf="titulo"></label>
-    <label>Matrícula técnico electromecánico<input data-pf="matTec"></label>
-    <label>Teléfono<input data-pf="tel" inputmode="tel"></label><label>Email<input data-pf="email" inputmode="email"></label><label>Localidad<input data-pf="localidad"></label>
+  <p class="hint" style="margin-top:0">Son fijos y salen iguales en informes, protocolo SRT y presupuestos.</p>
+  <div class="fijos">
+    <div><span>Empresa</span><b>${esc(perfil.empresa)}</b></div>
+    <div><span>Técnico responsable</span><b>${esc(perfil.nombre)} — ${esc(perfil.titulo)}</b></div>
+    <div><span>Matrícula</span><b>${esc(perfil.matTec)}</b></div>
+    <div><span>Contacto</span><b>${esc(perfil.tel)} · ${esc(perfil.email)} · ${esc(perfil.localidad)}</b></div>
+    <div><span>Equipo</span><b>${esc(perfil.eqNombre)} ${esc(perfil.eqModelo)} · N° ${esc(perfil.serie)}</b></div>
+    <div><span>Cuenta</span><b>${esc(perfil.banco)} · ${esc(perfil.titular)}</b></div>
+  </div>
+  <h3 class="sub" style="margin-top:16px">Se cargan una sola vez</h3>
+  <p class="hint" style="margin-top:0">Quedan guardados solo en este teléfono (no se publican en internet).</p>
+  <div class="grid" style="margin-top:8px">
+    <label>Alias<input data-uv="alias"></label>
+    <label>CBU<input data-uv="cbu" inputmode="numeric"></label>
+    <label>Última calibración del DT-6650<input data-uv="calibracion" placeholder="ej. 03/2026"></label>
   </div>
   <div class="msg" id="pfMsg"></div>
 </section>`;
-$$('[data-pf]', vHome).forEach(el => { el.value = perfil[el.dataset.pf] || '';
-  el.addEventListener('input', () => { perfil[el.dataset.pf] = el.value; const ok = store.set('bae.perfil', perfil); renderBrand();
-    if(el.dataset.pf === 'nombre' || el.dataset.pf === 'titulo' || el.dataset.pf === 'matTec') syncInforme(true);
+$$('[data-uv]', vHome).forEach(el => { el.value = unaVez[el.dataset.uv] || '';
+  el.addEventListener('input', () => { unaVez[el.dataset.uv] = el.value.trim(); perfil[el.dataset.uv] = el.value.trim(); const ok = store.set('bae.unavez', unaVez); syncInforme();
     setMsg('#pfMsg', ok ? 'Guardado.' : 'Este navegador no permite guardar: los datos se pierden al cerrar.', !ok); }); });
 
 /* ================= tablas normativas ================= */
@@ -671,5 +696,6 @@ async function downloadXlsx(){
 }
 window.__srtTest = { buildXlsx, setCell, srtCells, get srt(){ return srt; }, set srt(v){ srt = v; }, calcPat, wenner, pat };
 
+window.__app = { VIEWS, main, route };
 route();
 })();
