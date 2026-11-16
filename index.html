@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1f4fd1">
+<meta name="theme-color" content="#0b7a4b">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -16,13 +16,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
-    --bg:#f4f5f7; --card:#fff; --ink:#1b1f24; --muted:#6b7280; --line:#e3e6ea;
-    --accent:#1f4fd1; --accent-ink:#fff; --ok:#137a3a; --ok-bg:#e5f5ea; --bad:#b42318; --bad-bg:#fdecea;
-    --neutral-bg:#eef0f3;
+    --bg:#eef5f1; --card:#fff; --ink:#14231c; --muted:#5f7068; --line:#d6e5dc;
+    --accent:#0b7a4b; --accent-ink:#fff; --ok:#137a3a; --ok-bg:#e2f4e9; --bad:#b42318; --bad-bg:#fdecea;
+    --neutral-bg:#e3efe8;
   }
   @media (prefers-color-scheme: dark){
-    :root{ --bg:#14161a; --card:#1d2026; --ink:#e8eaed; --muted:#9aa1ab; --line:#2d3139;
-      --accent:#5b8cff; --ok:#5fd38a; --ok-bg:#16301f; --bad:#ff8a80; --bad-bg:#3a1b1a; --neutral-bg:#262a31; }
+    :root{ --bg:#0e1612; --card:#15211b; --ink:#e4efe8; --muted:#93a69b; --line:#24362c;
+      --accent:#3ccf86; --accent-ink:#05150d; --ok:#5fd38a; --ok-bg:#16301f; --bad:#ff8a80; --bad-bg:#3a1b1a; --neutral-bg:#1d2c24; }
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45}
@@ -80,6 +80,7 @@
   .live{display:grid;grid-template-columns:minmax(260px,420px) 1fr;gap:18px;margin-top:14px}
   @media (max-width:720px){.live{grid-template-columns:1fr}}
   .live canvas{width:100%;height:auto;border-radius:6px;background:#000}
+  [hidden]{display:none !important}
   .live-status{font-size:14px;margin-bottom:10px;min-height:20px}
   .msg{font-size:14px;color:var(--muted);margin-top:10px;min-height:20px}
   .msg.err{color:var(--bad)}
@@ -776,7 +777,7 @@ $('#pdfBtn').onclick = async () => {
   setMsg('#dlMsg', 'Generando PDF…');
   const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit:'mm', format:'a4' });
   const r = state.report, PW = 210, M = 15; let y = M;
-  const blue = [31,79,209];
+  const blue = [11,122,75];
   const footer = () => { const n = doc.getNumberOfPages(); for(let p=1;p<=n;p++){ doc.setPage(p); doc.setFontSize(8); doc.setTextColor(120); doc.text(pdfSafe([r.tecnico ? r.tecnico + (r.matricula ? ' (Mat. ' + r.matricula + ')' : '') : '', [r.eqModelo, r.serie ? 'N° ' + r.serie : ''].filter(Boolean).join(' ')].filter(Boolean).join('  ·  ')), M, 290); doc.text(`Página ${p} de ${n}`, PW-M, 290, {align:'right'}); } };
   const need = h => { if(y + h > 280){ doc.addPage(); y = M; } };
 

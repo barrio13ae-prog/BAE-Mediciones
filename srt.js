@@ -30,6 +30,18 @@ css.textContent = `
   .view{display:grid;gap:18px}
   .view[hidden]{display:none}
   .home{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+  .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  @media (min-width:900px){.tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  .tile{display:flex;flex-direction:column;align-items:flex-start;gap:10px;text-decoration:none;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 16px;min-height:170px;transition:transform .12s, box-shadow .12s, border-color .12s}
+  .tile:hover,.tile:focus-visible{border-color:var(--accent);box-shadow:0 6px 18px rgba(11,122,75,.18);transform:translateY(-2px);outline:none}
+  .tile:active{transform:scale(.98)}
+  .tile .ic{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:var(--accent);color:#fff}
+  .tile .ic svg{width:30px;height:30px}
+  .tile b{font-size:16px;line-height:1.2}
+  .tile span{font-size:13px;color:var(--muted);line-height:1.35}
+  .back{display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-weight:600;font-size:14px;text-decoration:none;color:var(--accent);background:var(--card);border:1px solid var(--line);border-radius:20px;padding:6px 14px}
+  nav.tabs{display:none !important}
+  .back[hidden]{display:none}
   .home .card{display:flex;flex-direction:column;gap:10px}
   .home h2{font-size:17px;margin:0}
   .home p{margin:0;color:var(--muted);font-size:14px}
@@ -100,7 +112,8 @@ function syncInforme(force){
 const LOGO = `<svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><rect x="1" y="1" width="46" height="46" rx="11" fill="var(--accent)"/><path d="M27 7 15 27h8l-3 14 13-21h-8z" fill="#ffd34d"/></svg>`;
 header.innerHTML = `<div class="brand">${LOGO}<div><div class="bname" id="bName"></div><div class="bcred" id="bCred"></div></div></div>
   <h1 id="appTitle"></h1><p id="appSub"></p>
-  <nav class="tabs"><a href="#inicio" data-v="inicio">Inicio</a><a href="#vivo" data-v="vivo">Ver multifunción CEM</a><a href="#informe" data-v="informe">Informe DT-6650</a><a href="#srt" data-v="srt">Protocolo SRT 900/15</a><a href="#pat" data-v="pat">Diseño de PAT</a></nav>`;
+  <nav class="tabs"><a href="#inicio" data-v="inicio">Inicio</a><a href="#vivo" data-v="vivo">Ver multifunción CEM</a><a href="#informe" data-v="informe">Informe DT-6650</a><a href="#srt" data-v="srt">Protocolo SRT 900/15</a><a href="#pat" data-v="pat">Diseño de PAT</a></nav>
+  <a class="back" id="backHome" href="#inicio">← Inicio</a>`;
 function renderBrand(){ $('#bName').textContent = perfil.empresa || 'BAE Servicios de Instalaciones'; $('#bCred').textContent = [perfil.nombre, ...credenciales()].filter(Boolean).join(' · '); }
 renderBrand(); syncInforme(false);
 function route(){
@@ -108,6 +121,7 @@ function route(){
   const k = VIEWS[h] ? h : 'inicio';
   Object.entries(VIEWS).forEach(([n, v]) => v.el.hidden = n !== k);
   placeBt(k);
+  const bk = document.getElementById('backHome'); if(bk) bk.hidden = k === 'inicio';
   $('#appTitle').textContent = VIEWS[k].title; $('#appSub').textContent = VIEWS[k].sub;
   $$('nav.tabs a').forEach(a => a.classList.toggle('on', a.dataset.v === k));
   document.title = VIEWS[k].title;
@@ -118,20 +132,12 @@ function route(){
 window.addEventListener('hashchange', route);
 
 /* ================= inicio ================= */
-vHome.innerHTML = `<div class="home">
-  <section class="card"><h2>Ver multifunción CEM</h2><p>La pantalla del DT-6650 en vivo por Bluetooth, sin armar informe.</p>
-    <ul><li>Misma pantalla que el equipo</li><li>Aviso de polaridad invertida</li><li>Captura en imagen para compartir</li></ul>
-    <a class="go" href="#vivo"><button class="primary">Abrir</button></a></section>
-  <section class="card"><h2>Informe DT-6650</h2><p>Informe en PDF a partir de los archivos .txt del multifunción.</p>
-    <ul><li>Pantalla de cada medición</li><li>Límites de aceptación por función</li><li>PDF, imágenes y tabla para Excel</li></ul>
-    <a class="go" href="#informe"><button class="primary">Abrir</button></a></section>
-  <section class="card"><h2>Protocolo SRT 900/15</h2><p>Protocolo de medición de PAT y continuidad de masas.</p>
-    <ul><li>Tomas de tierra con verificación 52 / 62 / 72 %</li><li>Continuidad de masas y ensayo de diferenciales</li><li>Formulario oficial completo (.xlsx)</li></ul>
-    <a class="go" href="#srt"><button class="primary">Abrir</button></a></section>
-  <section class="card"><h2>Diseño de PAT</h2><p>Qué puesta a tierra armar según la resistividad del suelo.</p>
-    <ul><li>Mediciones Wenner del SEW 4235 ER</li><li>Jabalinas, malla o contrapeso (Dwight y coeficiente k)</li><li>Verificación AEA 90364 (Tabla 771.3.1)</li></ul>
-    <a class="go" href="#pat"><button class="primary">Abrir</button></a></section>
-</div>
+vHome.innerHTML = `<nav class="tiles" aria-label="Funciones">
+  <a class="tile" href="#vivo"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2.5" width="16" height="19" rx="2.5"/><rect x="7" y="5.5" width="10" height="7" rx="1"/><path d="M9.5 9.5l1.5-2 1.5 3 1.5-2"/><circle cx="9" cy="17" r="1.3"/><circle cx="15" cy="17" r="1.3"/></svg></div><b>Ver multifunción CEM</b><span>Pantalla del DT-6650 en vivo por Bluetooth y captura en imagen.</span></a>
+  <a class="tile" href="#informe"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5"/><path d="M8 13h8M8 17h5"/></svg></div><b>Informe DT-6650</b><span>Mediciones, límites e informe en PDF.</span></a>
+  <a class="tile" href="#srt"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2"/><path d="M9 3.5V2.5h6v1"/><path d="M8.5 11l2 2 4-4"/><path d="M8.5 17h7"/></svg></div><b>Protocolo SRT 900/15</b><span>PAT, continuidad y diferenciales. Formulario oficial.</span></a>
+  <a class="tile" href="#pat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5v11"/><path d="M5 13.5h14"/><path d="M7.5 17h9"/><path d="M10 20.5h4"/></svg></div><b>Diseño de PAT</b><span>Resistividad Wenner y selección de la puesta a tierra.</span></a>
+</nav>
 <section class="card" id="perfilCard"><h2>Mis datos</h2>
   <p class="hint" style="margin-top:0">Se usan en el encabezado y la firma de los informes y del protocolo SRT. Quedan guardados en este navegador.</p>
   <div class="grid" style="margin-top:10px">
