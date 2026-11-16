@@ -71,6 +71,11 @@
   .empty{color:var(--muted);padding:10px 0}
   .bt{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}
   .bt-state{font-size:14px;color:var(--muted)}
+  .bt.solo{border-top:none;margin-top:0;padding-top:0}
+  .bt.solo .inf-only{display:none}
+  .bt:not(.solo) .vivo-only{display:none}
+  .bt.solo .live{grid-template-columns:1fr}
+  .bt.solo .live canvas{max-width:640px}
   .bt-state.on{color:var(--ok);font-weight:600}
   .live{display:grid;grid-template-columns:minmax(260px,420px) 1fr;gap:18px;margin-top:14px}
   @media (max-width:720px){.live{grid-template-columns:1fr}}
@@ -106,7 +111,7 @@
   </details>
   <div class="msg" id="loadMsg"></div>
   <div class="bt" id="btBox">
-    <h3 style="margin:14px 0 6px;font-size:15px">O conectá el equipo por Bluetooth</h3>
+    <h3 class="inf-only" style="margin:14px 0 6px;font-size:15px">O conectá el equipo por Bluetooth</h3>
     <div class="row">
       <button class="primary" id="btConnect">Conectar DT-6650</button>
       <button id="btDisconnect" hidden>Desconectar</button>
@@ -118,12 +123,14 @@
       <canvas id="liveCanvas"></canvas>
       <div class="live-side">
         <div class="live-status" id="liveStatus"></div>
-        <label>Ubicación / circuito<input id="liveUbic" placeholder="ej. Tomacorriente cocina"></label>
+        <label class="inf-only">Ubicación / circuito<input id="liveUbic" placeholder="ej. Tomacorriente cocina"></label>
         <div class="row" style="margin-top:10px">
-          <button class="primary" id="liveSave">Guardar medición</button>
+          <button class="primary inf-only" id="liveSave">Guardar medición</button>
+          <button id="liveShot">Capturar pantalla</button>
           <button id="liveReset" hidden>Reiniciar RCD automático</button>
         </div>
-        <p class="note">Guardá cuando el equipo termine la prueba. La medición se suma a la lista y al informe.</p>
+        <p class="note inf-only">Guardá cuando el equipo termine la prueba. La medición se suma a la lista y al informe.</p>
+        <p class="note vivo-only">"Capturar pantalla" guarda una imagen de lo que ves, con fecha y hora, para compartirla o archivarla.</p>
         <details style="margin-top:10px"><summary>Datos técnicos (diagnóstico)</summary>
           <pre id="liveRaw" style="white-space:pre-wrap;font-size:12px;background:var(--neutral-bg);padding:8px;border-radius:8px;margin:8px 0"></pre>
           <div class="row"><button id="rawCopy">Copiar datos</button><button id="rawMark">Marcar muestra</button><span class="note" id="rawMsg" style="margin:0"></span></div>
@@ -541,8 +548,9 @@ function drawScreen(m, canvas){
   // fondo y panel izquierdo
   c.fillStyle = '#6f97e6'; c.fillRect(0,0,W,H);
   c.fillStyle = '#5a85e0'; c.fillRect(0,0,W,16);
+  if(m.ts){ c.fillStyle = '#5a85e0'; c.fillRect(150,0,W-150,24); c.fillStyle = '#0d1b3a'; c.font = `700 17px ${F}`; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(m.ts, 160, 12); }
   // área principal
-  const mx = 150, my = 18, mw = W - mx - 6, mh = 376;
+  const mx = 150, my = m.ts ? 26 : 18, mw = W - mx - 6, mh = m.ts ? 368 : 376;
   const g = c.createLinearGradient(0,my,0,my+mh); g.addColorStop(0,'#1f3737'); g.addColorStop(1,'#3f5f5a');
   c.fillStyle = g; c.fillRect(mx,my,mw,mh);
   c.strokeStyle = '#a9c2d8'; c.lineWidth = 2; c.strokeRect(mx+1,my+1,mw-2,mh-2);
@@ -566,7 +574,7 @@ function drawScreen(m, canvas){
   c.font = `700 24px ${F}`; c.fillText('Función:', mx+8, my+32);
   c.fillText(m.func, mx+160, my+32);
   c.textAlign = 'left';
-  fitTextLeft(c, 'Nombre de archivo: ' + m.file, mx+8, my+62, mw-16, 22, '700', F);
+  fitTextLeft(c, (String(m.id).startsWith('bt#') ? 'Equipo: CEM DT-6650 · por Bluetooth' : 'Nombre de archivo: ' + m.file), mx+8, my+62, mw-16, 22, '700', F);
   // tabla de tiempos de disparo (RCD automático)
   const Dv = m.D.filter(d => d.value);
   if(isRcd(m)){ drawRcdTable(c, m, mx, my, mw, mh, F); }
@@ -863,7 +871,8 @@ function btState(t, on){ const e = $('#btState'); e.textContent = t; e.classList
 function liveToMeas(r){
   const name = (r.FN || []), val = (r.F || []);
   const F = [0,1,2,3].map(i => ({ name: name[i] || '', value: val[i] || '' }));
-  const m = { id: 'bt#' + Date.now(), file: 'Bluetooth ' + new Date().toLocaleTimeString('es-AR', { hour12: false }), func: r.func, F, D: [], X: [], ubic: '', obs: '' };
+  const now = new Date(), p2 = n => String(n).padStart(2, '0');
+  const m = { ts: `${p2(now.getDate())}.${p2(now.getMonth()+1)}.${now.getFullYear()}   ${p2(now.getHours())}:${p2(now.getMinutes())}`, id: 'bt#' + Date.now(), file: 'Bluetooth ' + new Date().toLocaleString('es-AR', { hour12: false, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', ''), func: r.func, F, D: [], X: [], ubic: '', obs: '' };
   if(r.mode === 54 && r.F[0] === 'Auto'){
     Object.entries(STEP_MAP).forEach(([k, [mult, ang]]) => {
       const v = BT.rcd[k] || '';
@@ -948,6 +957,15 @@ $('#rawCopy').onclick = async () => {
   const txt = 'DT-6650 datos crudos\n\nÚltimo:\n' + RAW.last + (RAW.marks.length ? '\n\nMarcadas:\n' + RAW.marks.join('\n\n') : '');
   try { await navigator.clipboard.writeText(txt); $('#rawMsg').textContent = 'Copiado. Pegalo en el chat.'; }
   catch(e){ $('#rawMsg').textContent = 'No se pudo copiar: seleccioná el texto de arriba y copialo a mano.'; }
+};
+$('#liveShot').onclick = async () => {
+  if(!BT.last){ $('#liveStatus').textContent = 'Todavía no llegaron datos del equipo.'; return; }
+  const m = liveToMeas(BT.last), cv = document.createElement('canvas'); drawScreen(m, cv);
+  const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+  const t = new Date(), p = n => String(n).padStart(2, '0');
+  const name = `CEM_${m.func.replace(/[^\w]+/g, '-')}_${t.getFullYear()}-${p(t.getMonth()+1)}-${p(t.getDate())}_${p(t.getHours())}-${p(t.getMinutes())}-${p(t.getSeconds())}.png`;
+  const ok = await save(name, blob);
+  if(ok) $('#liveStatus').textContent = 'Captura guardada: ' + name;
 };
 $('#btConnect').onclick = () => btConnect(false);
 $('#btAll').onclick = () => btConnect(true);

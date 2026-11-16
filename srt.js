@@ -65,9 +65,19 @@ while(main.firstChild) vInf.appendChild(main.firstChild);
 const vHome = document.createElement('div'); vHome.className = 'view'; vHome.id = 'view-inicio';
 const vSrt = document.createElement('div'); vSrt.className = 'view'; vSrt.id = 'view-srt';
 const vPat = document.createElement('div'); vPat.className = 'view'; vPat.id = 'view-pat';
-[vHome, vInf, vSrt, vPat].forEach(v => main.appendChild(v));
+const vVivo = document.createElement('div'); vVivo.className = 'view'; vVivo.id = 'view-vivo';
+vVivo.innerHTML = `<section class="card"><h2>Pantalla del multifunción</h2><div id="vivoSlot"></div></section>`;
+[vHome, vVivo, vInf, vSrt, vPat].forEach(v => main.appendChild(v));
+// el bloque Bluetooth es uno solo: se muestra en la pestaña activa (en vivo o informe)
+const btHome = (() => { const b = document.getElementById('btBox'); return b ? { parent: b.parentNode, next: b.nextSibling } : null; })();
+function placeBt(k){
+  const b = document.getElementById('btBox'); if(!b || !btHome) return;
+  if(k === 'vivo'){ if(b.parentNode !== $('#vivoSlot')) $('#vivoSlot').appendChild(b); b.classList.add('solo'); }
+  else if(k === 'informe'){ if(b.parentNode !== btHome.parent) btHome.parent.insertBefore(b, btHome.next); b.classList.remove('solo'); }
+}
 const VIEWS = {
   inicio: { el: vHome, title: 'Herramientas de medición eléctrica', sub: 'Elegí qué querés hacer.' },
+  vivo: { el: vVivo, title: 'Multifunción CEM en vivo', sub: 'Mirá la pantalla del DT-6650 en el teléfono y capturala, sin armar un informe.' },
   informe: { el: vInf, title: 'Informe de mediciones CEM DT-6650', sub: 'Cargá los archivos .txt del equipo y obtené la imagen de cada pantalla y el informe en PDF.' },
   srt: { el: vSrt, title: 'Protocolo de PAT — Res. SRT 900/15', sub: 'Cargá las mediciones y descargá el formulario oficial completo.' },
   pat: { el: vPat, title: 'Diseño de puesta a tierra', sub: 'Resistividad por Wenner (SEW 4235 ER) y selección de la PAT según AEA 90364.' }
@@ -90,13 +100,14 @@ function syncInforme(force){
 const LOGO = `<svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><rect x="1" y="1" width="46" height="46" rx="11" fill="var(--accent)"/><path d="M27 7 15 27h8l-3 14 13-21h-8z" fill="#ffd34d"/></svg>`;
 header.innerHTML = `<div class="brand">${LOGO}<div><div class="bname" id="bName"></div><div class="bcred" id="bCred"></div></div></div>
   <h1 id="appTitle"></h1><p id="appSub"></p>
-  <nav class="tabs"><a href="#inicio" data-v="inicio">Inicio</a><a href="#informe" data-v="informe">Informe DT-6650</a><a href="#srt" data-v="srt">Protocolo SRT 900/15</a><a href="#pat" data-v="pat">Diseño de PAT</a></nav>`;
+  <nav class="tabs"><a href="#inicio" data-v="inicio">Inicio</a><a href="#vivo" data-v="vivo">Ver multifunción CEM</a><a href="#informe" data-v="informe">Informe DT-6650</a><a href="#srt" data-v="srt">Protocolo SRT 900/15</a><a href="#pat" data-v="pat">Diseño de PAT</a></nav>`;
 function renderBrand(){ $('#bName').textContent = perfil.empresa || 'BAE Servicios de Instalaciones'; $('#bCred').textContent = [perfil.nombre, ...credenciales()].filter(Boolean).join(' · '); }
 renderBrand(); syncInforme(false);
 function route(){
   const h = (location.hash || '').replace('#', '');
   const k = VIEWS[h] ? h : 'inicio';
   Object.entries(VIEWS).forEach(([n, v]) => v.el.hidden = n !== k);
+  placeBt(k);
   $('#appTitle').textContent = VIEWS[k].title; $('#appSub').textContent = VIEWS[k].sub;
   $$('nav.tabs a').forEach(a => a.classList.toggle('on', a.dataset.v === k));
   document.title = VIEWS[k].title;
@@ -108,6 +119,9 @@ window.addEventListener('hashchange', route);
 
 /* ================= inicio ================= */
 vHome.innerHTML = `<div class="home">
+  <section class="card"><h2>Ver multifunción CEM</h2><p>La pantalla del DT-6650 en vivo por Bluetooth, sin armar informe.</p>
+    <ul><li>Misma pantalla que el equipo</li><li>Aviso de polaridad invertida</li><li>Captura en imagen para compartir</li></ul>
+    <a class="go" href="#vivo"><button class="primary">Abrir</button></a></section>
   <section class="card"><h2>Informe DT-6650</h2><p>Informe en PDF a partir de los archivos .txt del multifunción.</p>
     <ul><li>Pantalla de cada medición</li><li>Límites de aceptación por función</li><li>PDF, imágenes y tabla para Excel</li></ul>
     <a class="go" href="#informe"><button class="primary">Abrir</button></a></section>
