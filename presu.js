@@ -123,6 +123,8 @@ css.textContent = `
   .pz-cond .del{padding:8px 0;font-size:16px}
   .pz-row.actual{border-color:var(--accent)}
   .pz-row em{font-style:normal;color:var(--accent);font-weight:500;font-size:13px}
+  .pz-sticky{transition:transform .25s ease, opacity .25s ease}
+  .pz-sticky.oculta{transform:translateY(130%);opacity:0;pointer-events:none}
   .pz-hint{font-size:12.5px;color:var(--muted);margin:4px 0 8px}
   .pz-sticky{position:sticky;bottom:0;z-index:5;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 -4px 16px rgba(0,0,0,.12)}
 `;
@@ -201,6 +203,7 @@ function render(){
   v.innerHTML = `
   <section class="card"><h2>Mis presupuestos</h2>
     <div class="row" style="margin-bottom:10px"><button class="primary" id="pzNuevo">+ Nuevo presupuesto</button></div>
+    <div class="msg" id="pzMsgTop" style="margin:0 0 10px"></div>
     ${lista.length ? `<input id="pzBuscar" type="search" placeholder="Buscar por cliente, obra, dirección o N°" style="margin-bottom:10px">
     <p class="pz-hint" id="pzCuenta">${lista.length} guardado${lista.length === 1 ? '' : 's'}</p>` : ''}
     <div class="pz-list" id="pzLista">${listaHTML()}</div></section>
@@ -238,7 +241,7 @@ function render(){
     <div class="row"><button id="pzGuardar">Guardar</button><button class="primary" id="pzPdf">Descargar PDF</button></div>
     <div class="msg" id="pzMsg" style="flex-basis:100%;margin:0"></div>
   </div>`;
-  bind();
+  bind(); setTimeout(barraTotal, 0);
 }
 function refreshTotals(){
   const t = $('#pzTotal', v); if(t) t.textContent = '$ ' + money(total());
@@ -284,7 +287,7 @@ function bind(){
     $('#pzCuenta', v).textContent = q ? `${n} de ${lista.length}` : `${lista.length} guardado${lista.length === 1 ? '' : 's'}`;
   };
   $('#pzNuevo', v).onclick = () => { P = nuevo(); guardarActual(); render(); msg('Presupuesto nuevo N° ' + P.numero + '.'); };
-  $('#pzGuardar', v).onclick = guardar;
+  $('#pzGuardar', v).onclick = guardarClick;
   $('#pzPdf', v).onclick = pdf;
   $$('[data-abrir]', v).forEach(b => b.onclick = () => { const x = lista.find(y => y.id === b.dataset.abrir); if(x){ P = JSON.parse(JSON.stringify(x)); guardarActual(); render(); window.scrollTo(0, 0); msg('Abierto el N° ' + P.numero + '.'); } });
   $$('[data-dup]', v).forEach(b => b.onclick = () => { const x = lista.find(y => y.id === b.dataset.dup); if(x){ P = JSON.parse(JSON.stringify(x)); P.id = 'p' + Date.now(); P.numero = nuevoNumero(); P.fecha = isoHoy(); guardarActual(); render(); msg('Copia lista como N° ' + P.numero + '. Ajustá cliente y montos.'); } });
@@ -293,8 +296,17 @@ function bind(){
     lista = lista.filter(y => y.id !== b.dataset.borrar); store.set('bae.presu.lista', lista); render();
   });
 }
-function msg(t, err){ const m = $('#pzMsg', v); if(m){ m.textContent = t; m.classList.toggle('err', !!err); } }
-function guardar(){
+function msg(t, err){ ['#pzMsg', '#pzMsgTop'].forEach(id => { const m = $(id, v); if(m){ m.textContent = t; m.classList.toggle('err', !!err); } }); }
+const vacio = () => !String(P.cliente).trim() && !P.mo.some(r => String(r.desc).trim() || num(r.precio));
+function terminarYLimpiar(texto){
+  P = nuevo(); guardarActual(); render(); window.scrollTo(0, 0);
+  msg(texto + ' Ya podés armar el siguiente (N° ' + P.numero + '). Lo guardado está en "Mis presupuestos".');
+}
+function guardarClick(){
+  if(vacio()){ msg('Completá al menos el cliente o un ítem antes de guardar.', true); return; }
+  const num0 = P.numero; guardar(true); terminarYLimpiar('Guardado el N° ' + num0 + '.');
+}
+function guardar(silencioso){
   const rec = JSON.parse(JSON.stringify(P)); rec._total = total();
   const i = lista.findIndex(y => y.id === P.id); if(i >= 0) lista[i] = rec; else lista.push(rec);
   const n = parseInt(String(P.numero).split('-').pop(), 10); if(!isNaN(n) && n > (+cfg.ultimo || 0)){ cfg.ultimo = n; store.set('bae.presu.cfg', cfg); }
@@ -302,14 +314,15 @@ function guardar(){
     const i = precios.findIndex(x => x.desc.trim().toLowerCase() === d.toLowerCase());
     if(i >= 0) precios[i].precio = num(r.precio); else precios.push({ desc: d, precio: num(r.precio) }); });
   guardarPrecios();
-  store.set('bae.presu.lista', lista); render(); msg('Guardado: presupuesto N° ' + P.numero + '.');
+  store.set('bae.presu.lista', lista); if(!silencioso){ render(); msg('Guardado: presupuesto N° ' + P.numero + '.'); }
 }
 
 /* ---------- PDF ---------- */
 const SAFE = s => String(s ?? '').replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/Ω/g, 'ohm').replace(/[—–]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[^\x00-\xFF]/g, '');
 async function pdf(){
   if(!window.jspdf){ msg('No se cargó el generador de PDF. Abrí la app con internet una vez.', true); return; }
-  guardar();
+  if(vacio()){ msg('Completá al menos el cliente o un ítem antes de descargar.', true); return; }
+  guardar(true);
   const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = 210, M = 15, CW = PW - 2*M, BOT = simple() ? 286 : 284; let y = 14;
   const VERDE = [11,122,75], CLARO = [220,239,228], TXT = [25,30,28];
@@ -445,9 +458,17 @@ async function pdf(){
     doc.text(SAFE(`Presupuesto N° ${P.numero}${firma ? ' · ' + firma : ''} · Página ${i} de ${n}`), PW/2, 291, { align: 'center' }); }
   const name = `Presupuesto_${P.numero}_${(P.cliente || 'cliente').replace(/[^\wáéíóúñÁÉÍÓÚÑ]+/g, '_')}.pdf`;
   const ok = DT.save ? await DT.save(name, doc.output('blob')) : false;
-  msg(ok ? 'Listo: ' + name : 'No se pudo descargar el PDF.', !ok);
+  if(ok) terminarYLimpiar('PDF listo y presupuesto guardado: ' + name + '.'); else msg('No se pudo descargar el PDF. El presupuesto quedó guardado.', true);
   }
 }
+function barraTotal(){
+  const bar = $('.pz-sticky', v); if(!bar || v.hidden) return;
+  const abajo = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 120;
+  bar.classList.toggle('oculta', !abajo);
+}
+window.addEventListener('scroll', barraTotal, { passive: true });
+window.addEventListener('resize', barraTotal);
+window.addEventListener('hashchange', () => setTimeout(barraTotal, 50));
 window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = x; render(); }, pdf };
 render();
 APP.route();
