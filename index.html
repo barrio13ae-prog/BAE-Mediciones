@@ -124,6 +124,10 @@
           <button id="liveReset" hidden>Reiniciar RCD automático</button>
         </div>
         <p class="note">Guardá cuando el equipo termine la prueba. La medición se suma a la lista y al informe.</p>
+        <details style="margin-top:10px"><summary>Datos técnicos (diagnóstico)</summary>
+          <pre id="liveRaw" style="white-space:pre-wrap;font-size:12px;background:var(--neutral-bg);padding:8px;border-radius:8px;margin:8px 0"></pre>
+          <div class="row"><button id="rawCopy">Copiar datos</button><button id="rawMark">Marcar muestra</button><span class="note" id="rawMsg" style="margin:0"></span></div>
+        </details>
       </div>
     </div>
   </div>
@@ -875,8 +879,14 @@ function liveToMeas(r){
   if(r.uf && r.uf !== '----') m.X.push({ label: 'UF', value: r.uf + ' V', unit: 'V', mode: '' });
   return m;
 }
+const RAW = { last: '', marks: [] };
+function hex(a){ return Array.from(a, x => (x & 255).toString(16).padStart(2, '0')).join(' '); }
 function onLiveFrame(bytes){
   const r = window.DT6650.decode(bytes); if(!r || !r.func) return;
+  const d = Array.from(bytes).slice(3, 33);
+  RAW.last = `${r.func} | F: ${r.F.join('/')} | V1 ${r.v1} ${r.u1} | V2 ${r.v2} ${r.u2} | L-PE ${r.lpe} N-PE ${r.npe} L-N ${r.ln}\n` +
+    `d[21]=${d[21].toString(2).padStart(8,'0')} d[22]=${d[22].toString(2).padStart(8,'0')} d[23]=${d[23].toString(2).padStart(8,'0')} d[28]=${d[28]} d[29]=${d[29]}\n` + hex(bytes);
+  $('#liveRaw').textContent = RAW.last + (RAW.marks.length ? '\n\n— Muestras marcadas —\n' + RAW.marks.join('\n\n') : '');
   BT.frames++;
   if(BT.last && BT.last.mode !== r.mode) BT.rcd = {};
   if(r.mode === 54 && r.rcdStep) BT.rcd[r.rcdStep.name] = r.rcdStep.value;
@@ -923,6 +933,12 @@ async function btConnect(all){
     else btState('No se pudo conectar: ' + ((e && e.message) || e));
   }
 }
+$('#rawMark').onclick = () => { if(!RAW.last) return; RAW.marks.push(new Date().toLocaleTimeString('es-AR') + '\n' + RAW.last); $('#rawMsg').textContent = `Muestras marcadas: ${RAW.marks.length}`; };
+$('#rawCopy').onclick = async () => {
+  const txt = 'DT-6650 datos crudos\n\nÚltimo:\n' + RAW.last + (RAW.marks.length ? '\n\nMarcadas:\n' + RAW.marks.join('\n\n') : '');
+  try { await navigator.clipboard.writeText(txt); $('#rawMsg').textContent = 'Copiado. Pegalo en el chat.'; }
+  catch(e){ $('#rawMsg').textContent = 'No se pudo copiar: seleccioná el texto de arriba y copialo a mano.'; }
+};
 $('#btConnect').onclick = () => btConnect(false);
 $('#btAll').onclick = () => btConnect(true);
 $('#btDisconnect').onclick = () => { try { BT.dev && BT.dev.gatt.disconnect(); } catch(e){} };
