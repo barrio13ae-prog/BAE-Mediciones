@@ -71,6 +71,13 @@
   .empty{color:var(--muted);padding:10px 0}
   .bt{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}
   .bt-state{font-size:14px;color:var(--muted)}
+  .gps-in{display:flex;gap:6px;margin-top:4px}
+  .gps-in input{margin-top:0 !important;flex:1;min-width:0}
+  .gps-btn{padding:6px 12px;font-size:18px;line-height:1}
+  .gps-msg{display:block;font-size:12px;color:var(--muted);margin-top:4px;min-height:14px}
+  .gps-msg a{color:var(--accent)}
+  .chk-gps{display:flex !important;gap:8px;align-items:center;margin-top:8px;color:var(--ink) !important}
+  .chk-gps input{width:auto;margin:0}
   .bt.solo{border-top:none;margin-top:0;padding-top:0}
   .bt.solo .inf-only{display:none}
   .bt:not(.solo) .vivo-only{display:none}
@@ -125,6 +132,7 @@
       <div class="live-side">
         <div class="live-status" id="liveStatus"></div>
         <label class="inf-only">Ubicación / circuito<input id="liveUbic" placeholder="ej. Tomacorriente cocina"></label>
+        <label class="inf-only chk-gps"><input type="checkbox" id="liveGps"> Guardar la ubicación GPS con cada medición</label>
         <div class="row" style="margin-top:10px">
           <button class="primary inf-only" id="liveSave">Guardar medición</button>
           <button id="liveShot">Capturar pantalla</button>
@@ -150,7 +158,7 @@
     </div>
     <div class="grid" style="margin-top:12px">
       <label>Obra / instalación<input data-k="obra"></label>
-      <label>Dirección<input data-k="direccion"></label>
+      <label>Dirección<input data-k="direccion" placeholder="ej. 25 de Mayo 1520, Zapala"></label>
       <label>Fecha de medición<input type="date" data-k="fecha"></label>
     </div>
     <div class="grid" style="margin-top:12px">
@@ -498,6 +506,7 @@ document.querySelectorAll('#reportForm [data-k], textarea[data-k]').forEach(el =
   });
 });
 
+
 /* ---------- evaluación ---------- */
 function evaluateRcd(m, L){
   const all = m.D.filter(d => d.mult && d.value);
@@ -667,6 +676,24 @@ function fitTextLeft(c, t, x, y, maxW, size, weight, fam){
   c.textBaseline = 'alphabetic'; c.fillText(t, x, y);
 }
 
+/* ---------- ubicación GPS ---------- */
+function getGPS(){
+  return new Promise((res, rej) => {
+    if(!navigator.geolocation) return rej({ code: 0 });
+    navigator.geolocation.getCurrentPosition(
+      p => res(`${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)} (±${Math.round(p.coords.accuracy)} m)`),
+      e => rej(e), { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 });
+  });
+}
+function gpsCoords(s){ const mm = String(s || '').match(/(-?\d{1,3}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)/); return mm ? [mm[1], mm[2]] : null; }
+function gpsUrl(s){ const c = gpsCoords(s); return c ? `https://www.google.com/maps?q=${c[0]},${c[1]}` : ''; }
+function gpsErr(e){
+  if(e && e.code === 1) return 'Permiso de ubicación denegado: habilitalo para esta app en los ajustes de Chrome.';
+  if(e && e.code === 3) return 'No llegó señal GPS a tiempo. Probá al aire libre o con el GPS del celular activado.';
+  if(e && e.code === 0) return 'Este navegador no ofrece ubicación.';
+  return 'No se pudo obtener la ubicación. Revisá que el GPS esté activado.';
+}
+
 /* ---------- render ---------- */
 function renderAll(){ renderChips(); renderLimits(); renderMeas(); ['#pdfBtn','#zipBtn','#csvBtn'].forEach(s => $(s).disabled = !state.meas.length); }
 function renderChips(){
@@ -707,6 +734,7 @@ function renderMeas(){
         <div class="grid" style="grid-template-columns:1fr">
           <label>Ubicación / circuito<input data-u="${i}" value="${esc(m.ubic)}" placeholder="ej. Jabalina tablero principal"></label>
           <label>Observación<input data-o="${i}" value="${esc(m.obs)}"></label>
+          <label>Ubicación GPS<span class="gps-in"><input data-g="${i}" value="${esc(m.gps || '')}" placeholder="lat, long" inputmode="decimal"><button type="button" class="gps-btn" data-gb="${i}" title="Tomar ubicación GPS">📍</button></span><span class="gps-msg" data-gm="${i}">${m.gps && gpsUrl(m.gps) ? `<a href="${gpsUrl(m.gps)}" target="_blank" rel="noopener">Ver en el mapa</a>` : ''}</span></label>
         </div>
         <div class="row" style="margin-top:10px"><button data-png="${i}">Descargar imagen (.png)</button></div>
       </div>`;
@@ -715,6 +743,12 @@ function renderMeas(){
   });
   box.querySelectorAll('[data-u]').forEach(e => e.oninput = () => state.meas[+e.dataset.u].ubic = e.value);
   box.querySelectorAll('[data-o]').forEach(e => e.oninput = () => state.meas[+e.dataset.o].obs = e.value);
+  box.querySelectorAll('[data-g]').forEach(e => e.oninput = () => { state.meas[+e.dataset.g].gps = e.value; const u = gpsUrl(e.value); box.querySelector(`[data-gm="${e.dataset.g}"]`).innerHTML = u ? `<a href="${u}" target="_blank" rel="noopener">Ver en el mapa</a>` : ''; });
+  box.querySelectorAll('[data-gb]').forEach(btn => btn.onclick = async () => {
+    const i = +btn.dataset.gb, msg = box.querySelector(`[data-gm="${i}"]`); msg.textContent = 'Buscando señal GPS…';
+    try { const g = await getGPS(); state.meas[i].gps = g; box.querySelector(`[data-g="${i}"]`).value = g; const u = gpsUrl(g); msg.innerHTML = `<a href="${u}" target="_blank" rel="noopener">Ver en el mapa</a>`; }
+    catch(e){ msg.textContent = gpsErr(e); }
+  });
   box.querySelectorAll('[data-png]').forEach(b => b.onclick = () => downloadPng(+b.dataset.png));
   updateBadges();
 }
@@ -756,13 +790,13 @@ $('#csvBtn').onclick = async () => {
   const head = ['N°','Archivo','Función','Ubicación'];
   for(let k=0;k<maxD;k++) head.push('D'+(k+1), 'Unidad D'+(k+1));
   const xl = [...new Set(state.meas.flatMap(m => extras(m).map(x => x.label)))];
-  head.push('Ajustes', ...xl, 'Límite','Resultado','Observación');
+  head.push('Ajustes', ...xl, 'Límite','Resultado','Observación','Ubicación GPS');
   const rows = state.meas.map((m,i) => {
     const r = [i+1, m.file, m.func, m.ubic];
     for(let k=0;k<maxD;k++){ const d = m.D[k] || {}; r.push((d.value||'').replace('.', ','), (d.mode ? d.mode + ' ' : '') + (d.unit||'')); }
     r.push(m.F.filter(f => f.value).map(f => (f.name && f.name !== f.value ? f.name + ': ' : '') + f.value).join(' / '));
     xl.forEach(l => { const x = extras(m).find(e => e.label === l); r.push(x ? fmtVal(x) : ''); });
-    r.push(limitText(m), evaluate(m).txt, m.obs); return r;
+    r.push(limitText(m), evaluate(m).txt, m.obs, m.gps || ''); return r;
   });
   const csv = '﻿' + [head, ...rows].map(r => r.map(q).join(';')).join('\r\n');
   await save(reportName() + '.csv', csv);
@@ -801,7 +835,13 @@ $('#pdfBtn').onclick = async () => {
   doc.setDrawColor(225); doc.setFillColor(246,247,249);
   const ih = info.length * 6 + 6; doc.roundedRect(M, y, PW-2*M, ih, 2, 2, 'F'); y += 7;
   doc.setFontSize(10);
-  info.forEach(([k,v]) => { doc.setTextColor(110); doc.text(pdfSafe(k), M+4, y); doc.setTextColor(20); doc.text(pdfSafe(v), M+50, y); y += 6; });
+  info.forEach(([k,v]) => {
+    doc.setTextColor(110); doc.text(pdfSafe(k), M+4, y);
+    const u = k === 'Ubicación GPS' ? gpsUrl(v) : '';
+    if(u){ doc.setTextColor(...blue); doc.textWithLink(pdfSafe(v) + '  (ver en el mapa)', M+50, y, { url: u }); }
+    else { doc.setTextColor(20); doc.text(pdfSafe(v), M+50, y); }
+    y += 6;
+  });
   y += 6;
 
   // tabla resumen
@@ -849,7 +889,9 @@ $('#pdfBtn').onclick = async () => {
     const ex = extras(m); if(ex.length){ doc.setTextColor(110); doc.setFontSize(9); doc.text(pdfSafe(ex.map(x => x.label + ': ' + fmtVal(x)).join('   ')), tx, ty, {maxWidth: PW - M - tx}); ty += 10; }
     doc.setTextColor(110); doc.setFontSize(9); doc.text('Límite', tx, ty); doc.setTextColor(20); doc.setFontSize(11); doc.text(doc.splitTextToSize(pdfSafe(limitText(m)), PW - M - tx), tx, ty+6); ty += isRcd(m) ? 20 : 15;
     doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(...(ev.cls==='ok'?[19,122,58]:ev.cls==='bad'?[180,35,24]:[110,110,110])); doc.text(ev.txt, tx, ty+2); doc.setFont('helvetica','normal');
-    if(m.obs){ doc.setFontSize(9); doc.setTextColor(60); doc.text(doc.splitTextToSize(pdfSafe(m.obs), PW - M - tx), tx, ty+9); }
+    if(m.obs){ doc.setFontSize(9); doc.setTextColor(60); doc.text(doc.splitTextToSize(pdfSafe(m.obs), PW - M - tx), tx, ty+9); ty += 5; }
+    const gu = gpsUrl(m.gps);
+    if(gu){ doc.setFontSize(8.5); doc.setTextColor(...blue); doc.textWithLink(pdfSafe('GPS: ' + String(m.gps).replace(/\s*\(.*\)/, '')), tx, ty+14, { url: gu }); }
     y += ih2 + 10;
   }
   // firma
@@ -979,7 +1021,14 @@ $('#liveSave').onclick = () => {
   if(!state.limits[m.func]) state.limits[m.func] = isRcd(m) ? { x1: '300', x5: '40', half: 'si' } : { lim: '', crit: defaultCrit(m.func) };
   setMsg('#loadMsg', `Medición guardada (${m.func}${m.ubic ? ' – ' + m.ubic : ''}).`);
   $('#liveUbic').value = ''; renderAll();
+  if($('#liveGps').checked){
+    $('#liveStatus').textContent = 'Medición guardada. Buscando señal GPS…';
+    getGPS().then(g => { m.gps = g; renderAll(); $('#liveStatus').textContent = 'Medición guardada con ubicación GPS.'; })
+            .catch(e => { $('#liveStatus').textContent = 'Medición guardada sin GPS: ' + gpsErr(e); });
+  }
 };
+try { $('#liveGps').checked = localStorage.getItem('bae.liveGps') === '1'; } catch(e){}
+$('#liveGps').onchange = () => { try { localStorage.setItem('bae.liveGps', $('#liveGps').checked ? '1' : '0'); } catch(e){} };
 if(!btSupported()) { $('#btConnect').disabled = true; $('#btAll').hidden = true; btState('No disponible en este navegador.'); }
 
 getDownloads();
