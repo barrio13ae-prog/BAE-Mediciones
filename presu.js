@@ -117,6 +117,12 @@ css.textContent = `
   .pz-fmt input{display:none}
   .pz-fmt b{display:block;margin-bottom:4px}
   .pz-fmt span{font-size:13px;color:var(--muted);font-weight:400}
+  .pz-conds{display:grid;gap:8px}
+  .pz-cond{display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:start}
+  #view-presu .pz-cond textarea{min-height:44px;font-size:14px;margin:0;field-sizing:content;resize:vertical}
+  .pz-cond .del{padding:8px 0;font-size:16px}
+  .pz-row.actual{border-color:var(--accent)}
+  .pz-row em{font-style:normal;color:var(--accent);font-weight:500;font-size:13px}
   .pz-hint{font-size:12.5px;color:var(--muted);margin:4px 0 8px}
   .pz-sticky{position:sticky;bottom:0;z-index:5;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 -4px 16px rgba(0,0,0,.12)}
 `;
@@ -137,10 +143,12 @@ function itemsHTML(kind){
 }
 function listaHTML(){
   if(!lista.length) return '<p class="pz-hint">Todavía no guardaste presupuestos.</p>';
-  return lista.slice().reverse().map(x => `<div class="pz-row"><div><b>N° ${esc(x.numero)} · ${esc(x.cliente || 'Sin cliente')}</b>
+  return lista.slice().reverse().map(x => `<div class="pz-row${x.id === P.id ? ' actual' : ''}" data-q="${esc([x.numero, x.cliente, x.obra, x.direccion, fmtD(x.fecha)].join(' ').toLowerCase())}"><div><b>N° ${esc(x.numero)} · ${esc(x.cliente || 'Sin cliente')}${x.id === P.id ? ' <em>(abierto)</em>' : ''}</b>
     <span>${fmtD(x.fecha)} · $ ${money(x._total || 0)}${x.obra ? ' · ' + esc(x.obra.slice(0, 50)) : ''}</span></div>
     <div class="acts"><button data-abrir="${x.id}">Abrir</button><button data-dup="${x.id}" title="Usar como base">Duplicar</button><button data-borrar="${x.id}" title="Borrar">✕</button></div></div>`).join('');
 }
+const condLista = () => String(P.condiciones || '') === '' ? [] : String(P.condiciones).split('\n');
+const condGuardar = arr => { P.condiciones = arr.join('\n'); guardarActual(); };
 const REF = window.BAE_PRECIOS_REF || { fuentes: {}, items: [] };
 const corto = t => t.length > 64 ? t.slice(0, 62) + '…' : t;
 function catOptions(){
@@ -193,7 +201,9 @@ function render(){
   v.innerHTML = `
   <section class="card"><h2>Mis presupuestos</h2>
     <div class="row" style="margin-bottom:10px"><button class="primary" id="pzNuevo">+ Nuevo presupuesto</button></div>
-    <div class="pz-list">${listaHTML()}</div></section>
+    ${lista.length ? `<input id="pzBuscar" type="search" placeholder="Buscar por cliente, obra, dirección o N°" style="margin-bottom:10px">
+    <p class="pz-hint" id="pzCuenta">${lista.length} guardado${lista.length === 1 ? '' : 's'}</p>` : ''}
+    <div class="pz-list" id="pzLista">${listaHTML()}</div></section>
 
   <section class="card"><h2>Formato</h2>
     <div class="pz-fmt">
@@ -217,8 +227,9 @@ function render(){
   ${simple() ? MOCARD + ALCCARD : ALCCARD + MOCARD + MATCARD}
   <section class="card"><h2><span class="step">5</span> Condiciones y pago</h2>
     <div class="grid"><label>Anticipo al aceptar (%, opcional)<input data-p="anticipo" value="${esc(P.anticipo)}" inputmode="numeric" placeholder="vacío = no se agrega"></label></div>
-    <p class="pz-hint">Una condición por línea. La validez sale sola${simple() ? ' junto a la fecha' : ''}; si cargás un anticipo, se agrega una línea con el monto.</p>
-    <textarea data-p="condiciones">${esc(P.condiciones)}</textarea>
+    <p class="pz-hint">Tocá ✕ para sacar una condición de este presupuesto; al crear uno nuevo vuelven todas. La validez sale sola${simple() ? ' junto a la fecha' : ''}; si cargás un anticipo, se agrega una línea con el monto.</p>
+    <div class="pz-conds" id="pzConds">${condLista().map((c, i) => `<div class="pz-cond"><textarea data-cond="${i}" rows="2" placeholder="Escribí la condición…">${esc(c)}</textarea><button class="del" data-cdel="${i}" title="Quitar esta condición">✕</button></div>`).join('') || '<p class="pz-hint">Sin condiciones: no se agrega esa sección al PDF.</p>'}</div>
+    <div class="row" style="margin-top:10px"><button id="pzCondAdd">+ Agregar condición</button><button id="pzCondReset">Volver a las predeterminadas</button></div>
     <p class="pz-hint" style="margin-top:10px">Tus datos de contacto y de cobro salen solos (Inicio → Mis datos).</p>
   </section>
 
@@ -263,6 +274,15 @@ function bind(){
     const row = { desc: x.desc, cant: 1, precio: String(x.precio) }; if(empty >= 0) P.mo[empty] = row; else P.mo.push(row);
     guardarActual(); render(); const t = $$('#pzMo .pz-item', v).pop(); if(t){ const c = t.querySelector('[data-f="cant"]'); t.scrollIntoView({ block: 'center' }); c.focus(); c.select(); } };
   $$('[data-pdel]', v).forEach(b => b.onclick = () => { precios.splice(+b.dataset.pdel, 1); guardarPrecios(); render(); const d = $$('details', v).find(x => /Mis precios/.test(x.textContent)); if(d) d.open = true; });
+  $$('[data-cond]', v).forEach(t => t.addEventListener('input', () => { const a = condLista(); a[+t.dataset.cond] = t.value.replace(/\n/g, ' '); condGuardar(a); }));
+  $$('[data-cdel]', v).forEach(b => b.onclick = () => { const a = condLista(); a.splice(+b.dataset.cdel, 1); condGuardar(a); render(); });
+  $('#pzCondAdd', v).onclick = () => { const a = condLista(); a.push(''); condGuardar(a); render(); const ts = $$('[data-cond]', v); ts[ts.length - 1].focus(); };
+  $('#pzCondReset', v).onclick = () => { condGuardar((simple() ? COND_SIMPLE : COND_DEF).split('\n')); render(); };
+  const bus = $('#pzBuscar', v); if(bus) bus.oninput = () => {
+    const q = bus.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); let n = 0;
+    $$('#pzLista .pz-row', v).forEach(r => { const ok = !q || q.split(/\s+/).every(w => r.dataset.q.normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(w)); r.hidden = !ok; if(ok) n++; });
+    $('#pzCuenta', v).textContent = q ? `${n} de ${lista.length}` : `${lista.length} guardado${lista.length === 1 ? '' : 's'}`;
+  };
   $('#pzNuevo', v).onclick = () => { P = nuevo(); guardarActual(); render(); msg('Presupuesto nuevo N° ' + P.numero + '.'); };
   $('#pzGuardar', v).onclick = guardar;
   $('#pzPdf', v).onclick = pdf;

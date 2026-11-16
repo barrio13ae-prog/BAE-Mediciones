@@ -99,7 +99,7 @@ const VIEWS = {
   pat: { el: vPat, title: 'Diseño de puesta a tierra', sub: 'Resistividad por Wenner (SEW 4235 ER) y selección de la PAT según AEA 90364.' }
 };
 /* ---------- perfil del profesional ---------- */
-const PERFIL_DEF = { empresa: 'BAE Servicios de Instalaciones', servicio: 'Servicio de instalaciones y mantenimiento',
+const PERFIL_DEF = { empresa: 'BAE Servicios de Instalaciones', servicio: 'Servicios de instalaciones y mantenimiento',
   nombre: 'Alexis Emanuel Barrionuevo', titulo: 'Técnico electromecánico', matTec: 'TECA 01789',
   tel: '2942-626704', email: 'contacto@baeinstalaciones.com.ar', localidad: 'Zapala, Neuquén',
   banco: 'Banco Macro', titular: 'Alexis Emanuel Barrionuevo',
