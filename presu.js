@@ -66,7 +66,8 @@ const PRECIOS_DEF = [
   ['Certificado de Aptitud de la Instalación Eléctrica (Ord. 2173/25 Zapala)', 503500]
 ].map(([desc, precio]) => ({ desc, precio }));
 let precios = store.get('bae.presu.precios', null) || PRECIOS_DEF;
-const guardarPrecios = () => store.set('bae.presu.precios', precios);
+let preciosMod = store.get('bae.presu.preciosMod', 0);
+const guardarPrecios = () => { store.set('bae.presu.precios', precios); preciosMod = Date.now(); store.set('bae.presu.preciosMod', preciosMod); };
 const COND_DEF = [
   'Plazo estimado: a convenir según disponibilidad de materiales.',
   'Un cambio en las cantidades o en el tipo de trabajo modifica el presupuesto.',
@@ -125,6 +126,16 @@ css.textContent = `
   .pz-row em{font-style:normal;color:var(--accent);font-weight:500;font-size:13px}
   .pz-sticky{transition:transform .25s ease, opacity .25s ease}
   .pz-sticky.oculta{transform:translateY(130%);opacity:0;pointer-events:none}
+  .pz-banco{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:12px;display:grid;gap:8px}
+  .pz-banco-datos{font-size:14px;line-height:1.5;padding:8px 10px;border-radius:8px;background:var(--neutral-bg)}
+  .pz-nube{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;margin-bottom:12px;border-radius:12px;background:var(--neutral-bg);border:1px solid var(--line)}
+  .pz-nube.err{border-color:#d92d20}
+  .pz-nube div{display:grid;gap:2px;min-width:0}
+  .pz-nube span{font-size:13px;color:var(--muted)}
+  .pz-nube.err #pzNubeTxt{color:#b42318}
+  .pz-nube .cta{font-size:12px}
+  .pz-nube a{color:var(--accent)}
+  .pz-nube button{flex-shrink:0;padding:8px 12px}
   .pz-hint{font-size:12.5px;color:var(--muted);margin:4px 0 8px}
   .pz-sticky{position:sticky;bottom:0;z-index:5;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 -4px 16px rgba(0,0,0,.12)}
 `;
@@ -149,8 +160,21 @@ function listaHTML(){
     <span>${fmtD(x.fecha)} · $ ${money(x._total || 0)}${x.obra ? ' · ' + esc(x.obra.slice(0, 50)) : ''}</span></div>
     <div class="acts"><button data-abrir="${x.id}">Abrir</button><button data-dup="${x.id}" title="Usar como base">Duplicar</button><button data-borrar="${x.id}" title="Borrar">✕</button></div></div>`).join('');
 }
-const condLista = () => String(P.condiciones || '') === '' ? [] : String(P.condiciones).split('\n');
-const condGuardar = arr => { P.condiciones = arr.join('\n'); guardarActual(); };
+const condLista = () => Array.isArray(P.condArr) ? P.condArr.slice() : (String(P.condiciones || '') === '' ? [] : String(P.condiciones).split('\n'));
+const condGuardar = arr => { P.condArr = arr; P.condiciones = arr.join('\n'); guardarActual(); };
+const PF = () => typeof window.__perfil === 'function' ? window.__perfil() : {};
+const fmtCuit = c => { const d = String(c || '').replace(/\D/g, ''); return d.length === 11 ? `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}` : String(c || '').trim(); };
+const textoCuenta = () => { const pf = PF(); return [`${pf.banco || 'Cuenta'}${pf.titular ? ' – Titular: ' + pf.titular : ''}`, pf.cuit ? 'CUIT/CUIL: ' + fmtCuit(pf.cuit) : '', pf.alias ? 'Alias: ' + pf.alias : '', pf.cbu ? 'CBU: ' + pf.cbu : ''].filter(Boolean).join('\n'); };
+function bancoHTML(){
+  const pf = PF(), hay = pf.alias || pf.cbu;
+  return `<div class="pz-banco">
+    <h3 class="sub" style="margin:0 0 6px">Datos para transferencia</h3>
+    ${hay ? `<label class="chk-gps"><input type="checkbox" data-p="incluirBanco" ${P.incluirBanco !== false ? 'checked' : ''}> Incluir en este presupuesto</label>
+      <div class="pz-banco-datos">${esc(pf.banco || '')}${pf.titular ? ' · ' + esc(pf.titular) : ''}<br>${pf.cuit ? 'CUIT/CUIL: ' + esc(fmtCuit(pf.cuit)) + '<br>' : ''}${pf.alias ? 'Alias: <b>' + esc(pf.alias) + '</b>' : ''}${pf.alias && pf.cbu ? '<br>' : ''}${pf.cbu ? 'CBU: <b>' + esc(pf.cbu) + '</b>' : ''}</div>
+      <div class="row"><button id="pzCompartirCuenta">Compartir datos de cuenta</button></div>`
+    : `<p class="pz-hint" style="margin:0">Todavía no cargaste alias ni CBU. Cargalos una vez en <a href="#inicio">Inicio → Mis datos</a> y van a salir acá y en el PDF.</p>`}
+  </div>`;
+}
 const REF = window.BAE_PRECIOS_REF || { fuentes: {}, items: [] };
 const corto = t => t.length > 64 ? t.slice(0, 62) + '…' : t;
 function catOptions(){
@@ -204,6 +228,7 @@ function render(){
   <section class="card"><h2>Mis presupuestos</h2>
     <div class="row" style="margin-bottom:10px"><button class="primary" id="pzNuevo">+ Nuevo presupuesto</button></div>
     <div class="msg" id="pzMsgTop" style="margin:0 0 10px"></div>
+    ${nubeHTML()}
     ${lista.length ? `<input id="pzBuscar" type="search" placeholder="Buscar por cliente, obra, dirección o N°" style="margin-bottom:10px">
     <p class="pz-hint" id="pzCuenta">${lista.length} guardado${lista.length === 1 ? '' : 's'}</p>` : ''}
     <div class="pz-list" id="pzLista">${listaHTML()}</div></section>
@@ -233,7 +258,7 @@ function render(){
     <p class="pz-hint">Tocá ✕ para sacar una condición de este presupuesto; al crear uno nuevo vuelven todas. La validez sale sola${simple() ? ' junto a la fecha' : ''}; si cargás un anticipo, se agrega una línea con el monto.</p>
     <div class="pz-conds" id="pzConds">${condLista().map((c, i) => `<div class="pz-cond"><textarea data-cond="${i}" rows="2" placeholder="Escribí la condición…">${esc(c)}</textarea><button class="del" data-cdel="${i}" title="Quitar esta condición">✕</button></div>`).join('') || '<p class="pz-hint">Sin condiciones: no se agrega esa sección al PDF.</p>'}</div>
     <div class="row" style="margin-top:10px"><button id="pzCondAdd">+ Agregar condición</button><button id="pzCondReset">Volver a las predeterminadas</button></div>
-    <p class="pz-hint" style="margin-top:10px">Tus datos de contacto y de cobro salen solos (Inicio → Mis datos).</p>
+    ${bancoHTML()}
   </section>
 
   <div class="pz-sticky">
@@ -265,7 +290,7 @@ function bind(){
   $$('[data-del]', v).forEach(b => b.onclick = () => { (b.dataset.del === 'mo' ? P.mo : P.mat).splice(+b.dataset.i, 1); guardarActual(); render(); });
   $$('input[name="pzFmt"]', v).forEach(r => r.onchange = () => {
     const was = P.formato; P.formato = r.value;
-    if(was !== P.formato && (P.condiciones === COND_SIMPLE || P.condiciones === COND_DEF)) P.condiciones = P.formato === 'simple' ? COND_SIMPLE : COND_DEF;
+    if(was !== P.formato && (P.condiciones === COND_SIMPLE || P.condiciones === COND_DEF)) { P.condiciones = P.formato === 'simple' ? COND_SIMPLE : COND_DEF; delete P.condArr; }
     guardarActual(); render();
   });
   const aj = $('#pzAjuste', v); if(aj) aj.onchange = () => { cfg.ajusteRef = aj.value.trim(); store.set('bae.presu.cfg', cfg); render(); };
@@ -286,14 +311,24 @@ function bind(){
     $$('#pzLista .pz-row', v).forEach(r => { const ok = !q || q.split(/\s+/).every(w => r.dataset.q.normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(w)); r.hidden = !ok; if(ok) n++; });
     $('#pzCuenta', v).textContent = q ? `${n} de ${lista.length}` : `${lista.length} guardado${lista.length === 1 ? '' : 's'}`;
   };
+  const cc = $('#pzCompartirCuenta', v); if(cc) cc.onclick = async () => {
+    const t = textoCuenta();
+    try{ if(navigator.share){ await navigator.share({ title: 'Datos para transferencia', text: t }); return; } }catch(e){ if(e && e.name === 'AbortError') return; }
+    try{ await navigator.clipboard.writeText(t); msg('Datos de cuenta copiados: pegalos en WhatsApp o en un mail.'); }
+    catch(e){ msg('No se pudo compartir. Datos: ' + t.replace(/\n/g, ' · '), true); }
+  };
   $('#pzNuevo', v).onclick = () => { P = nuevo(); guardarActual(); render(); msg('Presupuesto nuevo N° ' + P.numero + '.'); };
   $('#pzGuardar', v).onclick = guardarClick;
   $('#pzPdf', v).onclick = pdf;
+  bindLista();
+}
+function bindLista(){
   $$('[data-abrir]', v).forEach(b => b.onclick = () => { const x = lista.find(y => y.id === b.dataset.abrir); if(x){ P = JSON.parse(JSON.stringify(x)); guardarActual(); render(); window.scrollTo(0, 0); msg('Abierto el N° ' + P.numero + '.'); } });
-  $$('[data-dup]', v).forEach(b => b.onclick = () => { const x = lista.find(y => y.id === b.dataset.dup); if(x){ P = JSON.parse(JSON.stringify(x)); P.id = 'p' + Date.now(); P.numero = nuevoNumero(); P.fecha = isoHoy(); guardarActual(); render(); msg('Copia lista como N° ' + P.numero + '. Ajustá cliente y montos.'); } });
+  $$('[data-dup]', v).forEach(b => b.onclick = () => { const x = lista.find(y => y.id === b.dataset.dup); if(x){ P = JSON.parse(JSON.stringify(x)); delete P._driveId; delete P._dirty; delete P._mod; P.id = 'p' + Date.now(); P.numero = nuevoNumero(); P.fecha = isoHoy(); guardarActual(); render(); msg('Copia lista como N° ' + P.numero + '. Ajustá cliente y montos.'); } });
   $$('[data-borrar]', v).forEach(b => b.onclick = () => {
     if(b.dataset.ok !== '1'){ b.dataset.ok = '1'; b.textContent = '¿Borrar?'; setTimeout(() => { if(b.isConnected){ b.dataset.ok = ''; b.textContent = '✕'; } }, 3000); return; }
-    lista = lista.filter(y => y.id !== b.dataset.borrar); store.set('bae.presu.lista', lista); render();
+    const x = lista.find(y => y.id === b.dataset.borrar); if(x && x._driveId){ borrados.push(x._driveId); if(x._pdfId) borrados.push(x._pdfId); store.set('bae.presu.borrados', borrados); }
+    lista = lista.filter(y => y.id !== b.dataset.borrar); store.set('bae.presu.lista', lista); render(); sincronizar(true);
   });
 }
 function msg(t, err){ ['#pzMsg', '#pzMsgTop'].forEach(id => { const m = $(id, v); if(m){ m.textContent = t; m.classList.toggle('err', !!err); } }); }
@@ -304,11 +339,11 @@ function terminarYLimpiar(texto){
 }
 function guardarClick(){
   if(vacio()){ msg('Completá al menos el cliente o un ítem antes de guardar.', true); return; }
-  const num0 = P.numero; guardar(true); terminarYLimpiar('Guardado el N° ' + num0 + '.');
+  const num0 = P.numero; guardar(true); sincronizar(true); terminarYLimpiar('Guardado el N° ' + num0 + '.');
 }
 function guardar(silencioso){
-  const rec = JSON.parse(JSON.stringify(P)); rec._total = total();
-  const i = lista.findIndex(y => y.id === P.id); if(i >= 0) lista[i] = rec; else lista.push(rec);
+  const rec = JSON.parse(JSON.stringify(P)); rec._total = total(); rec._mod = Date.now(); rec._dirty = true;
+  const i = lista.findIndex(y => y.id === P.id); if(i >= 0){ rec._driveId = rec._driveId || lista[i]._driveId; rec._pdfId = rec._pdfId || lista[i]._pdfId; lista[i] = rec; } else lista.push(rec);
   const n = parseInt(String(P.numero).split('-').pop(), 10); if(!isNaN(n) && n > (+cfg.ultimo || 0)){ cfg.ultimo = n; store.set('bae.presu.cfg', cfg); }
   P.mo.forEach(r => { const d = String(r.desc).trim(); if(!d || !num(r.precio)) return;
     const i = precios.findIndex(x => x.desc.trim().toLowerCase() === d.toLowerCase());
@@ -322,7 +357,7 @@ const SAFE = s => String(s ?? '').replace(/≤/g, '<=').replace(/≥/g, '>=').re
 async function pdf(){
   if(!window.jspdf){ msg('No se cargó el generador de PDF. Abrí la app con internet una vez.', true); return; }
   if(vacio()){ msg('Completá al menos el cliente o un ítem antes de descargar.', true); return; }
-  guardar(true);
+  guardar(true); sincronizar(true); const idPdf = P.id;
   const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = 210, M = 15, CW = PW - 2*M, BOT = simple() ? 286 : 284; let y = 14;
   const VERDE = [11,122,75], CLARO = [220,239,228], TXT = [25,30,28];
@@ -403,7 +438,7 @@ async function pdf(){
   if(P.direccion){ const ls = doc.splitTextToSize(SAFE('DIRECCIÓN DE LA OBRA: ' + P.direccion), CW); doc.text(ls, M, y); y += ls.length * 4.6; }
   if(P.obra){ const ls = doc.splitTextToSize(SAFE('OBRA: ' + (simple() ? P.obra : P.obra.toUpperCase())), CW); doc.text(ls, M, y); y += ls.length * 4.6; }
   y += 3;
-  const banco = (pf.alias || pf.cbu) ? [`CUENTA ${pf.banco ? 'DE ' + pf.banco.toUpperCase() + ' ' : ''}${pf.titular ? 'A NOMBRE DE ' + pf.titular.toUpperCase() : ''}`.trim(), pf.alias ? 'ALIAS: ' + pf.alias : '', pf.cbu ? 'CBU: ' + pf.cbu : ''].filter(Boolean) : [];
+  const banco = (P.incluirBanco !== false && (pf.alias || pf.cbu)) ? [`CUENTA ${pf.banco ? 'DE ' + pf.banco.toUpperCase() + ' ' : ''}${pf.titular ? 'A NOMBRE DE ' + pf.titular.toUpperCase() : ''}`.trim(), pf.cuit ? 'CUIT/CUIL: ' + fmtCuit(pf.cuit) : '', pf.alias ? 'ALIAS: ' + pf.alias : '', pf.cbu ? 'CBU: ' + pf.cbu : ''].filter(Boolean) : [];
   const ant = num(P.anticipo);
   if(simple()){
     const pesos = n => '$' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -457,7 +492,9 @@ async function pdf(){
   for(let i = 1; i <= n; i++){ doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(90);
     doc.text(SAFE(`Presupuesto N° ${P.numero}${firma ? ' · ' + firma : ''} · Página ${i} de ${n}`), PW/2, 291, { align: 'center' }); }
   const name = `Presupuesto_${P.numero}_${(P.cliente || 'cliente').replace(/[^\wáéíóúñÁÉÍÓÚÑ]+/g, '_')}.pdf`;
-  const ok = DT.save ? await DT.save(name, doc.output('blob')) : false;
+  const blobPdf = doc.output('blob');
+  pdfPend = pdfPend.filter(x => x.id !== idPdf); pdfPend.push({ id: idPdf, name, blob: blobPdf }); sincronizar(false);
+  const ok = DT.save ? await DT.save(name, blobPdf) : false;
   if(ok) terminarYLimpiar('PDF listo y presupuesto guardado: ' + name + '.'); else msg('No se pudo descargar el PDF. El presupuesto quedó guardado.', true);
   }
 }
@@ -468,8 +505,110 @@ function barraTotal(){
 }
 window.addEventListener('scroll', barraTotal, { passive: true });
 window.addEventListener('resize', barraTotal);
-window.addEventListener('hashchange', () => setTimeout(barraTotal, 50));
+window.addEventListener('hashchange', () => { if(location.hash === '#presu'){ render(); sincronizar(false); } setTimeout(barraTotal, 50); });
+/* ---------- Google Drive ---------- */
+const N = window.__nube;
+let borrados = store.get('bae.presu.borrados', []);
+let pdfPend = [];
+let sinc = { txt: '', err: false }, sincronizando = null, otraVez = false;
+const horaCorta = t => { const d = new Date(t); return p2(d.getHours()) + ':' + p2(d.getMinutes()); };
+function nubeHTML(){
+  if(!N || !N.email) return '';
+  const ult = store.get('bae.drive.ult', 0);
+  const txt = sinc.txt || (ult ? 'Al día · última sincronización ' + (new Date(ult).toDateString() === new Date().toDateString() ? 'hoy ' + horaCorta(ult) : fmtD(new Date(ult).toISOString().slice(0, 10))) : 'Todavía no se sincronizó.');
+  return `<div class="pz-nube${sinc.err ? ' err' : ''}"><div><b>☁ Google Drive</b><span id="pzNubeTxt">${esc(txt)}</span><span class="cta">${esc(N.email)} · <a href="#" id="pzSalir">cerrar sesión</a></span></div>
+    <button id="pzSync">Sincronizar</button></div>`;
+}
+function estado(t, err){ sinc = { txt: t, err: !!err }; const e = $('#pzNubeTxt', v); if(e){ e.textContent = t; e.closest('.pz-nube').classList.toggle('err', !!err); } }
+const nombreArchivo = x => ('Presupuesto_' + x.numero + '_' + (x.cliente || 'cliente')).replace(/[\\/:*?"<>|]+/g, '_');
+function editando(){ const a = document.activeElement; return a && v.contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && !$('#pzLista', v).contains(a) && a.id !== 'pzBuscar'; }
+function refrescarLista(){
+  if(!editando()){ render(); return; }
+  const l = $('#pzLista', v); if(l){ l.innerHTML = listaHTML(); bindLista(); }
+}
+async function sincronizar(interactivo){
+  if(!N || !N.email) return;
+  if(sincronizando){ otraVez = true; return sincronizando; }
+  if(!N.conectado){
+    if(!interactivo){ estado('Tocá "Sincronizar" para conectar con Google Drive.'); return; }
+    sincronizando = N.pedirToken(false).then(() => { sincronizando = null; return sincronizar(false); }, e => { sincronizando = null; estado('No se conectó con Drive: ' + e.message + '.', true); });
+    return sincronizando;
+  }
+  sincronizando = (async () => {
+    let cambio = false;
+    try{
+      estado('Sincronizando…');
+      let rem;
+      try{ rem = await N.listar('presu'); }catch(e){ if(/404/.test(e.message)){ N.olvidarCarpeta(); rem = await N.listar('presu'); } else throw e; }
+      // 1. borrados en este dispositivo → papelera de Drive
+      for(const id of borrados.slice()){ await N.papelera(id); borrados = borrados.filter(x => x !== id); store.set('bae.presu.borrados', borrados); }
+      rem = rem.filter(f => !borrados.includes(f.id));
+      // 2. traer lo nuevo o modificado en otro dispositivo
+      for(const f of rem){
+        const pid = f.appProperties && f.appProperties.id, mod = +(f.appProperties && f.appProperties.mod) || 0; if(!pid) continue;
+        const i = lista.findIndex(x => x.id === pid), loc = lista[i];
+        if(!loc || (!loc._dirty && (+loc._mod || 0) < mod)){
+          const d = await N.bajar(f.id); Object.assign(d, { id: pid, _driveId: f.id, _mod: mod, _dirty: false, _pdfId: loc ? loc._pdfId : d._pdfId });
+          if(i >= 0) lista[i] = d; else lista.push(d); cambio = true;
+        } else if(!loc._driveId){ loc._driveId = f.id; }
+      }
+      // 3. borrados en otro dispositivo
+      const ids = new Set(rem.map(f => f.id)), antes = lista.length;
+      lista = lista.filter(x => !(x._driveId && !x._dirty && !ids.has(x._driveId)));
+      if(lista.length !== antes) cambio = true;
+      // 4. subir lo guardado acá
+      for(const x of lista.filter(y => y._dirty || !y._driveId)){ /* también los guardados antes de conectar Drive */
+        const limpio = Object.assign({}, x); delete limpio._dirty; delete limpio._driveId;
+        const otro = rem.find(f => f.appProperties && f.appProperties.id === x.id);
+        x._driveId = await N.subir({ id: x._driveId || (otro && otro.id), name: nombreArchivo(x) + '.json', mime: 'application/json',
+          data: JSON.stringify(limpio), props: { bae: 'presu', id: x.id, mod: String(x._mod || Date.now()) } });
+        x._dirty = false; cambio = true;
+      }
+      // 5. PDF descargados
+      if(pdfPend.length){
+        const pdfs = await N.listar('pdf');
+        for(const p of pdfPend.slice()){
+          const x = lista.find(y => y.id === p.id), prev = pdfs.find(f => f.appProperties && f.appProperties.id === p.id);
+          const pid = await N.subir({ id: (prev && prev.id) || (x && x._pdfId), name: p.name, mime: 'application/pdf', data: p.blob, props: { bae: 'pdf', id: p.id } });
+          if(x){ x._pdfId = pid; } pdfPend = pdfPend.filter(y => y !== p);
+        }
+      }
+      // 6. contador y "Mis precios" compartidos
+      const cf = (await N.listar('cfg'))[0]; let rc = cf ? await N.bajar(cf.id) : null;
+      const maxLista = Math.max(0, ...lista.map(x => parseInt(String(x.numero).split('-').pop(), 10) || 0));
+      const ultimo = Math.max(+cfg.ultimo || 0, rc ? +rc.ultimo || 0 : 0, maxLista);
+      if(rc && (+rc.preciosMod || 0) > preciosMod && Array.isArray(rc.precios)){ precios = rc.precios; preciosMod = +rc.preciosMod; store.set('bae.presu.precios', precios); store.set('bae.presu.preciosMod', preciosMod); cambio = true; }
+      if(ultimo !== +cfg.ultimo){ cfg.ultimo = ultimo; store.set('bae.presu.cfg', cfg); }
+      if(!rc || +rc.ultimo !== ultimo || (+rc.preciosMod || 0) < preciosMod){
+        await N.subir({ id: cf && cf.id, name: 'bae-config.json', mime: 'application/json', data: JSON.stringify({ ultimo, precios, preciosMod }), props: { bae: 'cfg' } });
+      }
+      // si el formulario está vacío y su número ya se usó en otro dispositivo, paso al siguiente
+      if(vacio() && !lista.some(x => x.id === P.id) && (parseInt(String(P.numero).split('-').pop(), 10) || 0) <= ultimo){ P.numero = nuevoNumero(); guardarActual(); cambio = true; }
+      store.set('bae.presu.lista', lista); store.set('bae.drive.ult', Date.now());
+      sinc = { txt: '', err: false };
+    }catch(e){
+      if(e.code === 'TOKEN') estado('La conexión con Drive venció: tocá "Sincronizar".', true);
+      else if(!navigator.onLine) estado('Sin internet: se sube a Drive cuando vuelva la conexión.');
+      else estado('No se pudo sincronizar: ' + e.message + '.', true);
+      store.set('bae.presu.lista', lista);
+    }finally{
+      sincronizando = null;
+      if(cambio || !sinc.err) refrescarLista(); else { const t = $('#pzNubeTxt', v); if(t) t.textContent = sinc.txt; }
+      if(otraVez){ otraVez = false; sincronizar(false); }
+    }
+  })();
+  return sincronizando;
+}
+if(N){
+  N.onCambio(() => { if(location.hash === '#presu' && !editando()) render(); });
+  window.addEventListener('online', () => sincronizar(false));
+  v.addEventListener('click', e => {
+    if(e.target.id === 'pzSync'){ sincronizar(true); }
+    if(e.target.id === 'pzSalir'){ e.preventDefault(); N.salir(); location.reload(); }
+  });
+}
 window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = x; render(); }, pdf };
 render();
 APP.route();
+if(location.hash === '#presu') setTimeout(() => sincronizar(false), 300);
 })();

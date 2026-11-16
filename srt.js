@@ -102,15 +102,24 @@ const VIEWS = {
 const PERFIL_DEF = { empresa: 'BAE Servicios de Instalaciones', servicio: 'Servicios de instalaciones y mantenimiento',
   nombre: 'Alexis Emanuel Barrionuevo', titulo: 'Técnico electromecánico', matTec: 'TECA 01789',
   tel: '2942-626704', email: 'contacto@baeinstalaciones.com.ar', localidad: 'Zapala, Neuquén',
-  banco: 'Banco Macro', titular: 'Alexis Emanuel Barrionuevo',
+  banco: 'Banco Macro', titular: 'Alexis Emanuel Barrionuevo', cuit: '20-37926830-8',
+  alias: 'alexis.barrionuevo25', cbu: '2850561940095892689578',
+  calAnio: 2026, calMes: 9, // última calibración del DT-6650 (vale 1 año)
   eqNombre: 'CEM Multifunction Installation Tester', eqModelo: 'DT-6650', serie: '2603030240' };
 // Datos propios fijos. Solo se cargan una vez (y quedan en este teléfono) los que no van al código público: alias, CBU y la última calibración.
-const UNAVEZ_DEF = { alias: '', cbu: '', calibracion: '' };
+const UNAVEZ_DEF = { alias: '', cbu: '', cuit: '', calibracion: '' };
 const unaVez = Object.assign({}, UNAVEZ_DEF, store.get('bae.unavez', {}));
 (() => { const old = store.get('bae.presu.cfg', {}) || {}; const rep = store.get('dt6650.report', {}) || {};
   if(!unaVez.alias && old.alias) unaVez.alias = old.alias; if(!unaVez.cbu && old.cbu) unaVez.cbu = old.cbu;
   if(!unaVez.calibracion && rep.calibracion) unaVez.calibracion = rep.calibracion; })();
-const perfil = Object.assign({}, PERFIL_DEF, unaVez);
+const MESES_L = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const perfil = Object.assign({}, PERFIL_DEF, {
+  calibracion: String(PERFIL_DEF.calMes).padStart(2, '0') + '/' + PERFIL_DEF.calAnio,
+  calVence: String(PERFIL_DEF.calMes).padStart(2, '0') + '/' + (PERFIL_DEF.calAnio + 1),
+  calTexto: MESES_L[PERFIL_DEF.calMes - 1] + ' de ' + PERFIL_DEF.calAnio,
+  calVenceTexto: MESES_L[PERFIL_DEF.calMes - 1] + ' de ' + (PERFIL_DEF.calAnio + 1) });
+// días hasta el vencimiento (primer día del mes de vencimiento)
+const calDias = () => Math.ceil((new Date(PERFIL_DEF.calAnio + 1, PERFIL_DEF.calMes - 1, 1) - new Date()) / 864e5);
 // por ahora la app es de mediciones eléctricas: solo se muestra la matrícula de electricista
 const credenciales = () => [perfil.titulo + (perfil.matTec ? ' · Matrícula: ' + perfil.matTec : '')];
 const aclaracion = () => [perfil.nombre, perfil.titulo + (perfil.matTec ? ' — Matrícula: ' + perfil.matTec : '')].filter(Boolean).join(' — ');
@@ -119,10 +128,10 @@ window.__perfil = () => Object.assign({}, perfil, { credenciales: credenciales()
 function syncInforme(){
   const set = (k, v) => { const el = document.querySelector('#reportForm [data-k="' + k + '"]'); if(el){ el.value = v || ''; el.dispatchEvent(new Event('input')); } };
   set('tecnico', perfil.nombre + (perfil.titulo ? ' — ' + perfil.titulo : '')); set('matricula', perfil.matTec);
-  set('eqNombre', perfil.eqNombre); set('eqModelo', perfil.eqModelo); set('serie', perfil.serie); set('calibracion', perfil.calibracion);
+  set('eqNombre', perfil.eqNombre); set('eqModelo', perfil.eqModelo); set('serie', perfil.serie); set('calibracion', perfil.calibracion + ' (vence ' + perfil.calVence + ')');
   const fx = document.getElementById('infFijos');
   if(fx) fx.innerHTML = `<div><span>Técnico responsable</span><b>${esc(perfil.nombre)} — ${esc(perfil.titulo)} · Matrícula: ${esc(perfil.matTec)}</b></div>
-    <div><span>Equipo de medición</span><b>${esc(perfil.eqNombre)} ${esc(perfil.eqModelo)} · N° de serie ${esc(perfil.serie)}${perfil.calibracion ? ' · Última calibración: ' + esc(perfil.calibracion) : ''}</b></div>`;
+    <div><span>Equipo de medición</span><b>${esc(perfil.eqNombre)} ${esc(perfil.eqModelo)} · N° de serie ${esc(perfil.serie)}${' · Última calibración: ' + esc(perfil.calTexto) + ' (vence ' + esc(perfil.calVenceTexto) + ')'}</b></div>`;
 }
 const LOGO = (window.BAE_LOGO ? window.BAE_LOGO.mark.replace('<svg ', '<svg width="44" height="44" aria-hidden="true" ') : '');
 header.innerHTML = `<div class="brand">${LOGO}<div><div class="bname" id="bName"></div><div class="bcred" id="bCred"></div></div></div>
@@ -162,15 +171,12 @@ vHome.innerHTML = `<nav class="tiles" aria-label="Funciones">
     <div><span>Matrícula</span><b>${esc(perfil.matTec)}</b></div>
     <div><span>Contacto</span><b>${esc(perfil.tel)} · ${esc(perfil.email)} · ${esc(perfil.localidad)}</b></div>
     <div><span>Equipo</span><b>${esc(perfil.eqNombre)} ${esc(perfil.eqModelo)} · N° ${esc(perfil.serie)}</b></div>
-    <div><span>Cuenta</span><b>${esc(perfil.banco)} · ${esc(perfil.titular)}</b></div>
+    <div><span>Cuenta para transferencias</span><b>${esc(perfil.banco)} · ${esc(perfil.titular)} · CUIT/CUIL ${esc(perfil.cuit)}<br>Alias: ${esc(perfil.alias)} · CBU: ${esc(perfil.cbu)}</b></div>
   </div>
-  <h3 class="sub" style="margin-top:16px">Se cargan una sola vez</h3>
-  <p class="hint" style="margin-top:0">Quedan guardados solo en este teléfono (no se publican en internet).</p>
-  <div class="grid" style="margin-top:8px">
-    <label>Alias<input data-uv="alias"></label>
-    <label>CBU<input data-uv="cbu" inputmode="numeric"></label>
-    <label>Última calibración del DT-6650<input data-uv="calibracion" placeholder="ej. 03/2026"></label>
-  </div>
+  <h3 class="sub" style="margin-top:16px">Calibración del equipo</h3>
+  <div class="fijos"><div><span>DT-6650</span><b>Última calibración: ${esc(perfil.calTexto)} · Vence: ${esc(perfil.calVenceTexto)}</b></div></div>
+  ${calDias() <= 0 ? `<p class="msg err">La calibración del DT-6650 está vencida desde ${esc(perfil.calVenceTexto)}. Cuando lo recalibres, avisá para actualizar la fecha en la app.</p>`
+    : calDias() <= 60 ? `<p class="msg err">La calibración del DT-6650 vence en ${calDias()} días (${esc(perfil.calVenceTexto)}). Programá la recalibración.</p>` : ''}
   <div class="msg" id="pfMsg"></div>
 </section>`;
 $$('[data-uv]', vHome).forEach(el => { el.value = unaVez[el.dataset.uv] || '';

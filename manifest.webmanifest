@@ -1,6 +1,6 @@
 {
-  "name": "BAE Mediciones",
-  "short_name": "BAE Mediciones",
+  "name": "BAE Servicios de Instalaciones",
+  "short_name": "BAE Servicios",
   "description": "BAE Servicios de Instalaciones — Informe DT-6650, protocolo SRT 900/15, diseño de PAT y presupuestos.",
   "start_url": "./",
   "scope": "./",
