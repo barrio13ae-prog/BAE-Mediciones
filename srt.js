@@ -112,7 +112,7 @@ const VIEWS = {
 };
 /* ---------- perfil del profesional ---------- */
 const PERFIL_DEF = { empresa: 'BAE Servicios de Instalaciones', servicio: 'Servicios de instalaciones y mantenimiento',
-  nombre: 'Alexis Emanuel Barrionuevo', titulo: 'Técnico electromecánico', matTec: 'TECA 01789',
+  nombre: 'Alexis Emanuel Barrionuevo', titulo: 'Técnico electromecánico', matTec: 'TECA 01789', tituloGas: 'Gasista matriculado de 1.ª categoría', matGas: '80235899',
   tel: '2942-626704', email: 'contacto@baeinstalaciones.com.ar', localidad: 'Zapala, Neuquén',
   banco: 'Banco Macro', titular: 'Alexis Emanuel Barrionuevo', cuit: '20-37926830-8',
   alias: 'alexis.barrionuevo25', cbu: '2850561940095892689578',
@@ -186,6 +186,7 @@ ${calDias() <= 0 ? `<p class="msg err aviso-cal">La calibración del DT-6650 est
     <div><span>Empresa</span><b>${esc(perfil.empresa)}</b></div>
     <div><span>Técnico responsable</span><b>${esc(perfil.nombre)} — ${esc(perfil.titulo)}</b></div>
     <div><span>Matrícula</span><b>${esc(perfil.matTec)}</b></div>
+    <div><span>Matrícula de gas</span><b>${esc(perfil.tituloGas || '')} · ${esc(perfil.matGas || '')}</b></div>
     <div><span>Contacto</span><b>${esc(perfil.tel)} · ${esc(perfil.email)} · ${esc(perfil.localidad)}</b></div>
     <div><span>Equipo</span><b>${esc(perfil.eqNombre)} ${esc(perfil.eqModelo)} · N° ${esc(perfil.serie)}</b></div>
     <div><span>Cuenta para transferencias</span><b>${esc(perfil.banco)} · ${esc(perfil.titular)} · CUIT/CUIL ${esc(perfil.cuit)}<br>Alias: ${esc(perfil.alias)} · CBU: ${esc(perfil.cbu)}</b></div>
