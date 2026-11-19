@@ -174,6 +174,9 @@ vHome.innerHTML = `<nav class="tiles" aria-label="Funciones">
   <a class="tile" href="#srt"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2"/><path d="M9 3.5V2.5h6v1"/><path d="M8.5 11l2 2 4-4"/><path d="M8.5 17h7"/></svg></div><b>Protocolo SRT 900/15</b><span>PAT, continuidad y diferenciales. Formulario oficial.</span></a>
   <a class="tile" href="#pat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5v11"/><path d="M5 13.5h14"/><path d="M7.5 17h9"/><path d="M10 20.5h4"/></svg></div><b>Diseño de PAT</b><span>Resistividad Wenner y selección de la puesta a tierra.</span></a>
   <a class="tile" href="#presu"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></div><b>Presupuestos</b><span>Mano de obra, materiales y condiciones, en PDF.</span></a>
+  <a class="tile" href="#clientes"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg></div><b>Clientes</b><span>Agenda, contactos y vencimientos de protocolos.</span></a>
+  <a class="tile" href="#calc"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 6.5h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h.01M12 18h3.5"/></svg></div><b>Calculadoras</b><span>Cables, protecciones y grado de electrificación.</span></a>
+  <a class="tile" href="#resumen"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div><b>Resumen</b><span>Presupuestado, cobrado y trabajos del mes.</span></a>
 </nav>
 ${calDias() <= 0 ? `<p class="msg err aviso-cal">La calibración del DT-6650 está vencida desde ${esc(perfil.calVenceTexto)}. Cuando lo recalibres, avisá para actualizar la fecha en la app.</p>`
   : calDias() <= 60 ? `<p class="msg err aviso-cal">La calibración del DT-6650 vence en ${calDias()} días (${esc(perfil.calVenceTexto)}). Programá la recalibración.</p>` : ''}
@@ -706,13 +709,15 @@ async function downloadXlsx(){
     const u8 = await buildXlsx();
     const blob = new Blob([u8], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const name = ('BAE_Protocolo_PAT_SRT900_' + (srt.est.razon || 'establecimiento') + '_' + (srt.med.fecha || '')).replace(/[^\w\-]+/g, '_') + '.xlsx';
-    if(DT.save){ const ok = await DT.save(name, blob); setMsg('#xlsxMsg', ok ? 'Listo: ' + name : (document.querySelector('#dlMsg') || {}).textContent || 'No se pudo descargar.', !ok); }
+    if(DT.save){ const ok = await DT.save(name, blob); setMsg('#xlsxMsg', ok ? 'Listo: ' + name : (document.querySelector('#dlMsg') || {}).textContent || 'No se pudo descargar.', !ok);
+      if(ok) window.dispatchEvent(new CustomEvent('bae:srt', { detail: { nombre: srt.est.razon, cuit: srt.est.cuit, direccion: srt.est.dir, localidad: srt.est.loc, fecha: srt.med.fecha } })); }
     else setMsg('#xlsxMsg', 'No se pudo descargar en esta vista.', true);
   } catch(e){
     setMsg('#xlsxMsg', e.message === 'notpl' ? 'Primero cargá el formulario editable oficial (.xlsx) con el botón de al lado.' : e.message === 'nozip' ? 'No se cargó el componente ZIP. Recargá la página.' : 'No se pudo generar el formulario.', true);
   }
 }
 window.__srtTest = { buildXlsx, setCell, srtCells, get srt(){ return srt; }, set srt(v){ srt = v; }, calcPat, wenner, pat };
+window.__srt = { cargarCliente(c){ Object.assign(srt.est, { razon: c.nombre || '', cuit: c.cuit || '', dir: c.direccion || '', loc: c.localidad || srt.est.loc }); saveSrt(); try{ fillFields(); updateSrt(); }catch(e){} } };
 
 window.__app = { VIEWS, main, route };
 route();

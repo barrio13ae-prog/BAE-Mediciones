@@ -320,7 +320,9 @@
     if (mode >= 52 && mode <= 54) {
       // Dibujo de bornes (como el equipo): 0 = conexión correcta; distinto de 0 = L y N invertidos
       r.conn = fl & 0x03;
-      r.reversed = voltsOn && r.conn !== 0;
+      // El bit 1 de d[21] es HOLD (no polaridad): con HOLD activo la app marcaba "invertida" por error.
+      // Hasta confirmar con muestras reales qué bit indica la polaridad, los bornes se dibujan como los manda el equipo (fase primero).
+      r.reversed = false;
       if (voltsOn) {
         r.lpe = String((s3.neg ? -1 : 1) * s3.raw);
         r.npe = String(d[24] + d[25] * 256);
@@ -364,7 +366,7 @@
 'use strict';
 
 /* ---------- estado ---------- */
-const state = { files: [], meas: [], limits: {}, report: {}, fotos: [] };
+const state = { files: [], meas: [], limits: {}, report: {}, fotos: [], firmaCliente: null };
 let downloadsP = null;
 function getDownloads(){
   if(!(window.claude && typeof window.claude.use === 'function')) return Promise.resolve(null);
@@ -886,6 +888,24 @@ $('#pdfBtn').onclick = async () => {
     y += rowH;
   });
   y += 4;
+  // dictamen
+  const dic = dictamen();
+  if(dic.ok + dic.bad.length){
+    const cumple = !dic.bad.length;
+    const lineas = cumple ? [] : dic.bad.map(x => pdfSafe(`N° ${x.i+1} ${x.m.func}${x.m.ubic ? ' - ' + x.m.ubic : ''}: ${summaryVals(x.m)[0]} (límite ${limitText(x.m)})`));
+    const extra = dic.na ? pdfSafe(`${dic.na} medición${dic.na > 1 ? 'es' : ''} sin límite definido no se evaluaron.`) : '';
+    const alto = 14 + lineas.length * 5 + (extra ? 5 : 0);
+    need(alto + 4);
+    doc.setFillColor(...(cumple ? [228,243,234] : [253,232,230])); doc.setDrawColor(...(cumple ? [19,122,58] : [180,35,24]));
+    doc.roundedRect(M, y, PW-2*M, alto, 2, 2, 'FD');
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...(cumple ? [19,122,58] : [180,35,24]));
+    doc.text(pdfSafe(cumple ? `Dictamen: la instalación CUMPLE con los límites establecidos (${dic.ok} de ${dic.ok} mediciones evaluadas).`
+      : `Dictamen: la instalación NO CUMPLE en ${dic.bad.length} de ${dic.ok + dic.bad.length} mediciones evaluadas.`), M + 4, y + 7, { maxWidth: PW - 2*M - 8 });
+    doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(40);
+    let yy = y + 13; lineas.forEach(l => { doc.text('• ' + l, M + 6, yy, { maxWidth: PW - 2*M - 12 }); yy += 5; });
+    if(extra){ doc.setTextColor(100); doc.text(extra, M + 4, yy); }
+    y += alto + 6;
+  }
   }
   if(r.observaciones){ need(20); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20); doc.text('Observaciones', M, y+4); y += 9;
     doc.setFont('helvetica','normal'); doc.setFontSize(10); const lines = doc.splitTextToSize(pdfSafe(r.observaciones), PW-2*M); need(lines.length*5); doc.text(lines, M, y); y += lines.length*5 + 4; }
@@ -933,7 +953,16 @@ $('#pdfBtn').onclick = async () => {
     }
   }
   // firma
-  need(30); y += 14; doc.setDrawColor(150); doc.line(PW-M-70, y, PW-M, y);
+  const fT = window.__dt.firmaTecnico ? window.__dt.firmaTecnico() : null, fC = state.firmaCliente;
+  need(fT || (fC && fC.data) ? 52 : 30); y += fT || (fC && fC.data) ? 30 : 14;
+  if(fT){ try{ doc.addImage(fT, 'PNG', PW-M-62, y-26, 54, 24); }catch(e){} }
+  if(fC && (fC.data || fC.aclaracion)){
+    if(fC.data){ try{ doc.addImage(fC.data, 'PNG', M+8, y-26, 54, 24); }catch(e){} }
+    doc.setDrawColor(150); doc.line(M, y, M+70, y); doc.setFontSize(9); doc.setTextColor(90);
+    doc.text('Conformidad del cliente', M+35, y+5, {align:'center'});
+    if(fC.aclaracion) doc.text(pdfSafe(fC.aclaracion), M+35, y+10, {align:'center'});
+  }
+  doc.setDrawColor(150); doc.line(PW-M-70, y, PW-M, y);
   doc.setFontSize(9); doc.setTextColor(90); doc.text(pdfSafe(r.tecnico || 'Firma y aclaración'), PW-M-35, y+5, {align:'center'});
   if(r.matricula) doc.text(pdfSafe('Matrícula: ' + r.matricula), PW-M-35, y+10, {align:'center'});
   if(pf && pf.empresa) doc.text(pdfSafe(pf.empresa), PW-M-35, y + (r.matricula ? 15 : 10), {align:'center'});
@@ -1075,15 +1104,18 @@ if(!btSupported()) { $('#btConnect').disabled = true; $('#btAll').hidden = true;
 
 getDownloads();
 // compartido con el módulo de protocolo SRT y diseño de PAT
-window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles };
+function dictamen(){ const ev = state.meas.map((m, i) => ({ m, i, e: evaluate(m) })); return { ok: ev.filter(x => x.e.cls === 'ok').length, bad: ev.filter(x => x.e.cls === 'bad'), na: ev.filter(x => x.e.cls !== 'ok' && x.e.cls !== 'bad').length, total: ev.length }; }
+window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles, evaluate, limitText, summaryVals, fmtVal, dictamen, gpsCoords };
 })();
 </script>
 <script src="logo.js?v=1"></script>
-<script src="nube.js?v=5"></script>
-<script src="srt.js?v=15"></script>
+<script src="nube.js?v=6"></script>
+<script src="srt.js?v=16"></script>
 <script src="precios-ref.js?v=1"></script>
-<script src="presu.js?v=11"></script>
-<script src="informes.js?v=5"></script>
+<script src="presu.js?v=13"></script>
+<script src="informes.js?v=6"></script>
+<script src="clientes.js?v=2"></script>
+<script src="calc.js?v=1"></script>
 <script>
 // instalable como app (GitHub Pages); dentro de Claude simplemente se omite
 if('serviceWorker' in navigator && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)){

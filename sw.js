@@ -1,6 +1,6 @@
 /* BAE Servicios de Instalaciones: abre aunque falle la conexión, usando la última versión guardada */
-const CACHE = 'bae-v29';
-const CORE = ['./', './index.html', './srt.js', './logo.js', './nube.js', './presu.js', './informes.js', './precios-ref.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'bae-v32';
+const CORE = ['./', './index.html', './srt.js', './logo.js', './nube.js', './presu.js', './informes.js', './clientes.js', './calc.js', './precios-ref.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {

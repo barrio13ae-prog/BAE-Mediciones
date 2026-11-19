@@ -78,10 +78,20 @@ function nuevo(){
   return { id: 'p' + Date.now(), formato: 'simple', numero: nuevoNumero(), fecha: isoHoy(), validez: 15, anticipo: '',
     cliente: '', telCliente: '', direccion: '', obra: '', totalTxt: 'Total mano de obra', alcance: '', extraTitulo: '', extraTexto: '', moIntro: true,
     mo: [{ desc: '', cant: 1, precio: '' }], mat: [], matTotal: '', matIncluidos: true,
-    condiciones: COND_SIMPLE };
+    condiciones: COND_SIMPLE, estado: 'borrador', cobros: [] };
+}
+const ESTADOS = [['borrador','Borrador'],['enviado','Enviado'],['aceptado','Aceptado'],['obra','En obra'],['cobrado','Cobrado'],['rechazado','Rechazado']];
+const estadoTxt = e => (ESTADOS.find(x => x[0] === (e || 'borrador')) || ESTADOS[0])[1];
+const cobrado = x => (x.cobros || []).reduce((a, c) => a + num(c.monto), 0);
+const diasDesde = iso => iso ? Math.floor((Date.now() - new Date(iso + 'T12:00:00')) / 864e5) : 0;
+function waLink(tel, texto){
+  let d = String(tel || '').replace(/\D/g, '');
+  if(d){ d = d.replace(/^0+/, ''); if(!d.startsWith('54')) d = '549' + d; else if(!d.startsWith('549')) d = '549' + d.slice(2); }
+  return 'https://wa.me/' + d + '?text=' + encodeURIComponent(texto);
 }
 let P = store.get('bae.presu.actual', null) || nuevo();
 if(!P.formato) P.formato = 'completo';
+if(!P.estado) P.estado = 'borrador'; if(!Array.isArray(P.cobros)) P.cobros = [];
 const simple = () => P.formato === 'simple';
 const guardarActual = () => store.set('bae.presu.actual', P);
 const totMO = () => P.mo.reduce((s, r) => s + num(r.cant) * num(r.precio), 0);
@@ -147,6 +157,24 @@ css.textContent = `
   .pz-sesion{margin-top:12px;text-align:center}
   .pz-precio{cursor:default}
   .pz-sesion a{color:var(--accent)}
+  .pz-estados{display:flex;flex-wrap:wrap;gap:8px}
+  .pz-estados button{padding:7px 12px;border-radius:999px;font-size:13.5px}
+  .pz-estados button.on{color:#fff;border-color:transparent}
+  .pz-estados .est-borrador.on{background:#6b7a72}.pz-estados .est-enviado.on{background:#2563eb}.pz-estados .est-aceptado.on{background:#0b7a4b}
+  .pz-estados .est-obra.on{background:#b45309}.pz-estados .est-cobrado.on{background:#065f46}.pz-estados .est-rechazado.on{background:#b42318}
+  .pz-cobros{display:grid;gap:8px}
+  .pz-cobro{display:grid;grid-template-columns:140px 1fr 1fr 34px;gap:8px;align-items:center}
+  .pz-cobro input{margin:0}
+  .pz-cobro .del{padding:8px 0}
+  @media (max-width:560px){.pz-cobro{grid-template-columns:1fr 1fr 34px}.pz-cobro input[data-cf="nota"]{grid-column:1 / 3;grid-row:2}}
+  .pz-saldo{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .pz-saldo div{display:grid;gap:2px;padding:10px 12px;border-radius:10px;background:var(--neutral-bg)}
+  .pz-saldo span{font-size:12px;color:var(--muted)}
+  .pz-saldo b{font-size:15px}
+  .estados-fila{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;white-space:normal !important}
+  .chip-est{font-style:normal;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;color:#fff;background:#6b7a72}
+  .chip-est.est-enviado{background:#2563eb}.chip-est.est-aceptado{background:#0b7a4b}.chip-est.est-obra{background:#b45309}.chip-est.est-cobrado{background:#065f46}.chip-est.est-rechazado{background:#b42318}
+  .chip-est.est-aviso{background:#fde68a;color:#7c4a03}.chip-est.est-saldo{background:#fee2e2;color:#991b1b}
   .pz-hint{font-size:12.5px;color:var(--muted);margin:4px 0 8px}
   .pz-sticky{position:sticky;bottom:0;z-index:5;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 -4px 16px rgba(0,0,0,.12)}
 `;
@@ -169,7 +197,8 @@ function listaHTML(){
   if(!lista.length) return '<p class="pz-hint">Todavía no guardaste presupuestos.</p>';
   return lista.slice().reverse().map(x => `<div class="pz-row${x.id === P.id ? ' actual' : ''}" data-q="${esc([x.numero, x.cliente, x.obra, x.direccion, fmtD(x.fecha)].join(' ').toLowerCase())}" data-abrir="${x.id}" role="button" tabindex="0" title="Abrir">
     <div class="info"><b>${esc(x.cliente || 'Sin cliente')}${x.id === P.id ? ' <em>abierto</em>' : ''}</b>${x.obra ? `<span>${esc(x.obra)}</span>` : ''}
-    <span class="meta"><b class="monto">$ ${money(x._total || 0)}</b> · N° ${esc(x.numero)} · ${fmtD(x.fecha)}</span></div>
+    <span class="meta"><b class="monto">$ ${money(x._total || 0)}</b> · N° ${esc(x.numero)} · ${fmtD(x.fecha)}</span>
+    <span class="estados-fila"><i class="chip-est est-${x.estado || 'borrador'}">${estadoTxt(x.estado)}</i>${x.estado === 'enviado' && diasDesde(x.enviado) >= 7 ? `<i class="chip-est est-aviso">Sin respuesta hace ${diasDesde(x.enviado)} días</i>` : ''}${['aceptado','obra'].includes(x.estado) && (x._total || 0) - cobrado(x) > 0 && (x.cobros || []).length ? `<i class="chip-est est-saldo">Saldo $ ${money((x._total || 0) - cobrado(x))}</i>` : ''}</span></div>
     <div class="acts"><button data-dup="${x.id}" title="Nuevo presupuesto usando este como base">Duplicar</button><button data-borrar="${x.id}" title="Borrar" aria-label="Borrar">✕</button></div></div>`).join('');
 }
 const condLista = () => Array.isArray(P.condArr) ? P.condArr.slice() : (String(P.condiciones || '') === '' ? [] : String(P.condiciones).split('\n'));
@@ -273,9 +302,18 @@ function render(){
     ${bancoHTML()}
   </section>
 
+  <section class="card" id="pzSeg"><h2>Seguimiento</h2>
+    <div class="pz-estados">${ESTADOS.map(([k, t]) => `<button type="button" class="est-${k}${(P.estado || 'borrador') === k ? ' on' : ''}" data-estado="${k}">${t}</button>`).join('')}</div>
+    <h3 class="sub" style="margin:14px 0 6px">Cobros</h3>
+    <div class="pz-cobros">${(P.cobros || []).map((c, i) => `<div class="pz-cobro"><input type="date" data-cob="${i}" data-cf="fecha" value="${esc(c.fecha)}"><input data-cob="${i}" data-cf="monto" value="${esc(c.monto)}" placeholder="Monto" inputmode="numeric"><input data-cob="${i}" data-cf="nota" value="${esc(c.nota)}" placeholder="ej. Anticipo"><button class="del" data-cobdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}</div>
+    <div class="row" style="margin-top:8px"><button id="pzCobAdd">+ Registrar cobro</button></div>
+    <div class="pz-saldo"><div><span>Total</span><b>$ ${money(total())}</b></div><div><span>Cobrado</span><b id="pzCobrado">$ ${money(cobrado(P))}</b></div><div><span>Saldo</span><b id="pzSaldo">$ ${money(total() - cobrado(P))}</b></div></div>
+    ${['aceptado','obra','cobrado'].includes(P.estado) ? '<div class="row" style="margin-top:12px"><button id="pzAInforme">Crear el informe de esta obra →</button></div>' : ''}
+  </section>
+
   <div class="pz-sticky">
     <div><span class="pz-hint" style="margin:0">Total del presupuesto</span><div class="pz-big" id="pzTotal">$ ${money(total())}</div></div>
-    <div class="row"><button id="pzGuardar">Guardar</button><button class="primary" id="pzPdf">Descargar PDF</button></div>
+    <div class="row"><button id="pzGuardar">Guardar</button><button id="pzWa" title="Generar el PDF y enviarlo por WhatsApp">WhatsApp</button><button class="primary" id="pzPdf">PDF</button></div>
     <div class="msg" id="pzMsg" style="flex-basis:100%;margin:0"></div>
   </div>`;
   bind(); setTimeout(barraTotal, 0);
@@ -329,6 +367,12 @@ function bind(){
     try{ await navigator.clipboard.writeText(t); msg('Datos de cuenta copiados: pegalos en WhatsApp o en un mail.'); }
     catch(e){ msg('No se pudo compartir. Datos: ' + t.replace(/\n/g, ' · '), true); }
   };
+  $$('[data-estado]', v).forEach(b => b.onclick = () => { P.estado = b.dataset.estado; if(P.estado === 'enviado' && !P.enviado) P.enviado = isoHoy(); guardarActual(); render(); document.getElementById('pzSeg').scrollIntoView({ block: 'center' }); });
+  $$('[data-cob]', v).forEach(el => el.addEventListener('input', () => { P.cobros[+el.dataset.cob][el.dataset.cf] = el.value; guardarActual(); const sd = $('#pzSaldo', v); if(sd) sd.textContent = '$ ' + money(total() - cobrado(P)); const cb = $('#pzCobrado', v); if(cb) cb.textContent = '$ ' + money(cobrado(P)); }));
+  $$('[data-cobdel]', v).forEach(b => b.onclick = () => { P.cobros.splice(+b.dataset.cobdel, 1); guardarActual(); render(); document.getElementById('pzSeg').scrollIntoView({ block: 'center' }); });
+  const ca = $('#pzCobAdd', v); if(ca) ca.onclick = () => { P.cobros.push({ fecha: isoHoy(), monto: '', nota: P.cobros.length ? 'Pago' : 'Anticipo' }); guardarActual(); render(); const l = $$('[data-cf="monto"]', v).pop(); if(l){ l.scrollIntoView({ block: 'center' }); l.focus(); } };
+  const ai = $('#pzAInforme', v); if(ai) ai.onclick = () => { if(window.__informes && window.__informes.nuevoPara){ window.__informes.nuevoPara({ empresa: P.cliente, obra: P.obra, direccion: P.direccion }); location.hash = '#informe'; } };
+  const wa = $('#pzWa', v); if(wa) wa.onclick = () => pdf(true);
   $('#pzNuevo', v).onclick = () => { P = nuevo(); guardarActual(); render(); msg('Presupuesto nuevo N° ' + P.numero + '.'); };
   $('#pzGuardar', v).onclick = guardarClick;
   $('#pzPdf', v).onclick = pdf;
@@ -363,13 +407,15 @@ function guardar(silencioso){
     if(i >= 0) precios[i].precio = num(r.precio); else precios.push({ desc: d, precio: num(r.precio) }); });
   guardarPrecios();
   store.set('bae.presu.lista', lista); if(!silencioso){ render(); msg('Guardado: presupuesto N° ' + P.numero + '.'); }
+  if(String(P.cliente).trim()) window.dispatchEvent(new CustomEvent('bae:cliente', { detail: { nombre: P.cliente, telefono: P.telCliente, direccion: P.direccion } }));
 }
 
 /* ---------- PDF ---------- */
 const SAFE = s => String(s ?? '').replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/Ω/g, 'ohm').replace(/[—–]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[^\x00-\xFF]/g, '');
-async function pdf(){
+async function pdf(envio){
   if(!window.jspdf){ msg('No se cargó el generador de PDF. Abrí la app con internet una vez.', true); return; }
   if(vacio()){ msg('Completá al menos el cliente o un ítem antes de descargar.', true); return; }
+  if(envio && (!P.estado || P.estado === 'borrador')){ P.estado = 'enviado'; P.enviado = isoHoy(); }
   guardar(true); sincronizar(true); const idPdf = P.id;
   const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = 210, M = 15, CW = PW - 2*M, BOT = simple() ? 286 : 284; let y = 14;
@@ -507,6 +553,19 @@ async function pdf(){
   const name = `Presupuesto_${P.numero}_${(P.cliente || 'cliente').replace(/[^\wáéíóúñÁÉÍÓÚÑ]+/g, '_')}.pdf`;
   const blobPdf = doc.output('blob');
   pdfPend = pdfPend.filter(x => x.id !== idPdf); pdfPend.push({ id: idPdf, name, blob: blobPdf }); sincronizar(false);
+  if(envio){
+    const nom = (P.cliente || '').trim();
+    const texto = `Hola${nom ? ' ' + nom : ''}, ¿cómo estás? Te envío el presupuesto N° ${P.numero}${P.obra ? ' por ' + P.obra : ''}. Total: $ ${money(total())}. Cualquier consulta, quedo a disposición. ${(pf.nombre || '').split(' ')[0]} – ${pf.empresa || ''}`.trim();
+    const file = typeof File === 'function' ? new File([blobPdf], name, { type: 'application/pdf' }) : null;
+    let ok = false;
+    if(file && navigator.canShare && navigator.canShare({ files: [file] })){
+      try{ await navigator.share({ files: [file], text: texto }); ok = true; }
+      catch(e){ if(e && e.name === 'AbortError'){ msg('Envío cancelado. El presupuesto quedó guardado.'); return; } }
+    }
+    if(!ok){ if(DT.save) await DT.save(name, blobPdf); window.open(waLink(P.telCliente, texto), '_blank', 'noopener'); }
+    terminarYLimpiar('Presupuesto enviado y guardado como "Enviado".');
+    return;
+  }
   const ok = DT.save ? await DT.save(name, blobPdf) : false;
   if(ok) terminarYLimpiar('PDF listo y presupuesto guardado: ' + name + '.'); else msg('No se pudo descargar el PDF. El presupuesto quedó guardado.', true);
   }
@@ -619,7 +678,8 @@ if(N){
     if(e.target.id === 'pzSalir'){ e.preventDefault(); N.salir(); location.reload(); }
   });
 }
-window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = x; render(); }, pdf };
+window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = x; render(); }, pdf, get lista(){ return lista; }, cobrado, waLink,
+  nuevoPara(c){ P = nuevo(); P.cliente = c.nombre || ''; P.telCliente = c.telefono || ''; P.direccion = [c.direccion, c.localidad].filter(Boolean).join(', '); guardarActual(); render(); } };
 render();
 APP.route();
 if(location.hash === '#presu') setTimeout(() => sincronizar(false), 300);

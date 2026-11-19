@@ -28,7 +28,7 @@ function ponerReporte(rep){
   });
 }
 if(!Array.isArray(S.fotos)) S.fotos = [];
-const foto = () => ({ report: Object.fromEntries(CLIENTE.concat('fecha').map(k => [k, S.report[k] || ''])), meas: S.meas, files: S.files, fotos: S.fotos });
+const foto = () => ({ report: Object.fromEntries(CLIENTE.concat('fecha').map(k => [k, S.report[k] || ''])), meas: S.meas, files: S.files, fotos: S.fotos, firmaCliente: S.firmaCliente || null });
 const vacio = () => !S.meas.length && !S.fotos.length && !CLIENTE.some(k => String(S.report[k] || '').trim());
 const titulo = x => [x.report && x.report.empresa || 'Sin empresa', x.report && x.report.obra].filter(Boolean).join(' · ');
 
@@ -49,7 +49,7 @@ function guardarBorrador(){
   if(b.id) actualId = b.id;
   ponerReporte(b.report || {});
   if(Array.isArray(b.meas) && b.meas.length){ S.meas.length = 0; b.meas.forEach(m => S.meas.push(m)); S.files.length = 0; (b.files || []).forEach(f => S.files.push(f)); }
-  S.fotos.length = 0; (b.fotos || []).forEach(f => S.fotos.push(f));
+  S.fotos.length = 0; (b.fotos || []).forEach(f => S.fotos.push(f)); S.firmaCliente = b.firmaCliente || null;
   limites(); ultimo = JSON.stringify(foto()); DT.renderAll();
 })();
 setInterval(guardarBorrador, 2000);
@@ -62,18 +62,20 @@ function guardar(){
   const rec = Object.assign({ id: actualId }, JSON.parse(JSON.stringify(foto())), { _mod: Date.now(), _dirty: true, n: S.meas.length, nf: S.fotos.length });
   const i = lista.findIndex(x => x.id === actualId);
   if(i >= 0){ rec._driveId = lista[i]._driveId; lista[i] = rec; } else lista.push(rec);
-  store.set('bae.inf.lista', lista); return true;
+  store.set('bae.inf.lista', lista);
+  const rp = rec.report || {}; if(String(rp.empresa || '').trim()) window.dispatchEvent(new CustomEvent('bae:cliente', { detail: { nombre: rp.empresa, cuit: rp.cuit, direccion: rp.direccion } }));
+  return true;
 }
 function nuevo(){
-  actualId = 'i' + Date.now(); S.meas.length = 0; S.files.length = 0; S.fotos.length = 0; ponerReporte({});
-  DT.renderAll(); guardarBorrador(); renderFotos();
+  actualId = 'i' + Date.now(); S.meas.length = 0; S.files.length = 0; S.fotos.length = 0; S.firmaCliente = null; ponerReporte({});
+  DT.renderAll(); guardarBorrador(); renderFotos(); renderCierre();
 }
 function abrir(x, copia){
   actualId = copia ? 'i' + Date.now() : x.id;
   ponerReporte(copia ? Object.assign({}, x.report, { fecha: '' }) : (x.report || {}));
-  S.meas.length = 0; S.files.length = 0; S.fotos.length = 0;
+  S.meas.length = 0; S.files.length = 0; S.fotos.length = 0; S.firmaCliente = copia ? null : (x.firmaCliente || null);
   if(!copia){ (x.meas || []).forEach(m => S.meas.push(JSON.parse(JSON.stringify(m)))); (x.files || []).forEach(f => S.files.push(f)); (x.fotos || []).forEach(f => S.fotos.push(Object.assign({}, f))); }
-  limites(); DT.renderAll(); guardarBorrador(); render(); renderFotos(); window.scrollTo(0, 0);
+  limites(); DT.renderAll(); guardarBorrador(); render(); renderFotos(); renderCierre(); window.scrollTo(0, 0);
 }
 
 /* ---------- interfaz ---------- */
@@ -175,6 +177,9 @@ async function sincronizar(interactivo){
         borrados: () => borrados, setBorrados: b => { borrados = b; store.set('bae.inf.borrados', borrados); },
         nombre: x => ('Informe_' + ((x.report || {}).fecha || '') + '_' + titulo(x).replace(/ · /g, ' - ')).replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim() });
       await sincronizarFotos();
+      await N.sincronizarColeccion({ tipo: 'aj', carpeta: CARPETA, lista: () => ajustes, setLista: l => { ajustes = l; store.set('bae.aj.lista', ajustes); },
+        borrados: () => [], setBorrados: () => {}, nombre: x => 'bae-ajuste-' + x.id });
+      renderMiFirma(); renderCierre();
       store.set('bae.inf.ult', Date.now()); sinc = { txt: '', err: false }; ok = true;
     }catch(e){
       if(e.code === 'TOKEN') estado('La conexión con Drive venció: tocá "Sincronizar".', true);
@@ -345,13 +350,156 @@ function renderFotos(){
   }
 })();
 
+
+/* ---------- firma (pad de dibujo) ---------- */
+function firmar(titulo){
+  return new Promise(ok => {
+    const ov = document.createElement('div'); ov.className = 'bae-modal';
+    ov.innerHTML = `<div class="bm-box"><div class="bm-top"><b>${esc(titulo)}</b><button class="bm-x" aria-label="Cerrar">✕</button></div>
+      <canvas class="pad" width="900" height="360"></canvas><p class="bm-hint">Firmá con el dedo o el mouse dentro del recuadro.</p>
+      <div class="row"><button class="bm-borrar">Borrar</button><span style="flex:1"></span><button class="bm-cancel">Cancelar</button><button class="primary bm-ok">Listo</button></div></div>`;
+    document.body.appendChild(ov); document.documentElement.style.overflow = 'hidden';
+    const cv = ov.querySelector('canvas'), cx = cv.getContext('2d'); let dib = false, trazos = 0, last = null;
+    cx.lineWidth = 4.5; cx.lineCap = 'round'; cx.lineJoin = 'round'; cx.strokeStyle = '#0d1b3a';
+    const pt = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+    cv.addEventListener('pointerdown', e => { dib = true; last = pt(e); cv.setPointerCapture(e.pointerId); trazos++; cx.beginPath(); cx.arc(last[0], last[1], 2, 0, 7); cx.fillStyle = '#0d1b3a'; cx.fill(); });
+    cv.addEventListener('pointermove', e => { if(!dib) return; const p = pt(e); cx.beginPath(); cx.moveTo(last[0], last[1]); cx.lineTo(p[0], p[1]); cx.stroke(); last = p; });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => cv.addEventListener(t, () => { dib = false; }));
+    const cerrar = v => { ov.remove(); document.documentElement.style.overflow = ''; ok(v); };
+    ov.querySelector('.bm-borrar').onclick = () => { cx.clearRect(0, 0, cv.width, cv.height); trazos = 0; };
+    ov.querySelector('.bm-cancel').onclick = ov.querySelector('.bm-x').onclick = () => cerrar(null);
+    ov.querySelector('.bm-ok').onclick = () => {
+      if(!trazos) return cerrar(null);
+      // recortar al contenido
+      const d = cx.getImageData(0, 0, cv.width, cv.height).data; let x0 = cv.width, y0 = cv.height, x1 = 0, y1 = 0;
+      for(let y = 0; y < cv.height; y += 2) for(let x = 0; x < cv.width; x += 2) if(d[(y * cv.width + x) * 4 + 3] > 0){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
+      const pad = 10; x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(cv.width, x1 + pad); y1 = Math.min(cv.height, y1 + pad);
+      const w = x1 - x0, hh = y1 - y0, k = Math.max(w / 54, hh / 24), c2 = document.createElement('canvas');
+      c2.width = Math.round(54 * k); c2.height = Math.round(24 * k);
+      c2.getContext('2d').drawImage(cv, x0, y0, w, hh, (c2.width - w) / 2, (c2.height - hh) / 2, w, hh);
+      cerrar(c2.toDataURL('image/png'));
+    };
+  });
+}
+const mcss = document.createElement('style');
+mcss.textContent = `
+  .bae-modal{position:fixed;inset:0;z-index:9000;background:rgba(10,20,15,.55);display:grid;place-items:center;padding:14px}
+  .bae-modal .bm-box{width:min(720px,100%);max-height:100%;overflow:auto;background:var(--card);border-radius:16px;padding:16px;display:grid;gap:10px}
+  .bae-modal .bm-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .bae-modal .bm-x{width:34px;height:34px;padding:0;border-radius:50%}
+  .bae-modal .pad{width:100%;aspect-ratio:5/2;background:#fff;border:1.5px dashed var(--line);border-radius:12px;touch-action:none}
+  .bae-modal .bm-hint{margin:0;font-size:12.5px;color:var(--muted)}
+  .bae-modal .mapa{width:100%;height:min(70vh,520px);border-radius:12px;overflow:hidden}
+  .pin-num{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#0b7a4b;color:#fff;font:700 13px system-ui;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+  .pin-num.bad{background:#b42318}
+  #infCierre .ci-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  #infCierre .firma-img{height:56px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:2px 8px}
+  #infCierre .dic{padding:10px 14px;border-radius:12px;font-size:14px;font-weight:600;margin-bottom:12px}
+  #infCierre .dic.ok{background:color-mix(in srgb, #0b7a4b 12%, var(--card));color:#0b7a4b}
+  #infCierre .dic.bad{background:color-mix(in srgb, #b42318 10%, var(--card));color:#b42318}
+  #infCierre .dic small{display:block;font-weight:400;color:var(--muted);margin-top:2px}
+  #infCierre label{margin:0}
+  .mapa-btn{padding:6px 12px;font-size:13px}`;
+document.head.appendChild(mcss);
+
+/* ---------- firma del técnico (una vez, sincronizada) ---------- */
+let ajustes = store.get('bae.aj.lista', []);
+const firmaTec = () => { const f = ajustes.find(x => x.id === 'firma'); return f && f.data || null; };
+DT.firmaTecnico = firmaTec;
+function setFirmaTec(data){
+  ajustes = ajustes.filter(x => x.id !== 'firma');
+  const prev = store.get('bae.aj.lista', []).find(x => x.id === 'firma');
+  if(data) ajustes.push({ id: 'firma', data, _mod: Date.now(), _dirty: true, _driveId: prev && prev._driveId });
+  else if(prev && prev._driveId){ borrados.push(prev._driveId); store.set('bae.inf.borrados', borrados); }
+  store.set('bae.aj.lista', ajustes); renderMiFirma(); renderCierre(); sincronizar(true);
+}
+function renderMiFirma(){
+  const box = document.querySelector('#perfilCard details'); if(!box) return;
+  let el = document.getElementById('miFirma');
+  if(!el){ el = document.createElement('div'); el.id = 'miFirma'; el.style.marginTop = '14px'; const ref = box.querySelector('#pfMsg'); box.insertBefore(el, ref || null); }
+  const f = firmaTec();
+  el.innerHTML = `<h3 class="sub" style="margin:0 0 6px">Mi firma</h3><div class="row" style="align-items:center">${f ? `<img src="${f}" alt="Tu firma" style="height:56px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:2px 8px">` : '<span class="hint" style="margin:0">Todavía no cargaste tu firma. Sale en los informes PDF.</span>'}
+    <button id="mfDib">${f ? 'Cambiar' : 'Dibujar mi firma'}</button>${f ? '<button id="mfBor">Quitar</button>' : ''}</div>`;
+  el.querySelector('#mfDib').onclick = async () => { const d = await firmar('Tu firma'); if(d) setFirmaTec(d); };
+  const b = el.querySelector('#mfBor'); if(b) b.onclick = () => setFirmaTec(null);
+}
+
+/* ---------- cierre del informe: dictamen + conformidad del cliente ---------- */
+const cierre = document.createElement('section'); cierre.className = 'card'; cierre.id = 'infCierre';
+{ const desc = document.getElementById('pdfBtn').closest('section.card'); desc.parentNode.insertBefore(cierre, desc); }
+function renderCierre(){
+  const dic = DT.dictamen ? DT.dictamen() : { ok: 0, bad: [], na: 0, total: 0 };
+  const ev = dic.ok + dic.bad.length, fc = S.firmaCliente || {};
+  cierre.innerHTML = `<h2><span class="step">6</span> Dictamen y firmas</h2>
+    ${ev ? `<div class="dic ${dic.bad.length ? 'bad' : 'ok'}">${dic.bad.length ? `✗ NO CUMPLE en ${dic.bad.length} de ${ev} mediciones` : `✓ CUMPLE · ${ev} de ${ev} mediciones evaluadas`}
+      ${dic.na ? `<small>${dic.na} sin límite definido (no se evalúan). Cargalos en "Límites".</small>` : ''}${dic.bad.length ? `<small>${dic.bad.map(x => 'N° ' + (x.i + 1) + ' ' + esc(x.m.func) + (x.m.ubic ? ' – ' + esc(x.m.ubic) : '')).join(' · ')}</small>` : ''}</div>`
+      : `<p class="hint" style="margin:0 0 12px">${dic.total ? 'Definí los límites para que la app arme el dictamen (cumple / no cumple).' : 'El dictamen se arma solo cuando cargás mediciones con límites.'}</p>`}
+    <div class="ci-row"><b style="font-size:14px">Tu firma</b>${firmaTec() ? `<img class="firma-img" src="${firmaTec()}" alt="Tu firma">` : '<span class="hint" style="margin:0">sin cargar</span>'}<button id="ciTec">${firmaTec() ? 'Cambiar' : 'Dibujar'}</button></div>
+    <div class="ci-row" style="margin-top:12px"><b style="font-size:14px">Conformidad del cliente</b>${fc.data ? `<img class="firma-img" src="${fc.data}" alt="Firma del cliente">` : ''}<button id="ciCli">${fc.data ? 'Volver a firmar' : 'Firmar en pantalla'}</button>${fc.data ? '<button id="ciCliBor">Quitar</button>' : ''}</div>
+    <label style="margin-top:10px">Aclaración del cliente<input id="ciAcl" value="${esc(fc.aclaracion || '')}" placeholder="Nombre y DNI de quien firma"></label>`;
+  $('#ciTec', cierre).onclick = async () => { const d = await firmar('Tu firma'); if(d) setFirmaTec(d); };
+  $('#ciCli', cierre).onclick = async () => { const d = await firmar('Firma del cliente'); if(d){ S.firmaCliente = Object.assign({}, S.firmaCliente, { data: d }); guardarBorrador(); renderCierre(); } };
+  const cb = $('#ciCliBor', cierre); if(cb) cb.onclick = () => { S.firmaCliente = Object.assign({}, S.firmaCliente, { data: null }); guardarBorrador(); renderCierre(); };
+  $('#ciAcl', cierre).oninput = e => { S.firmaCliente = Object.assign({}, S.firmaCliente, { aclaracion: e.target.value }); };
+  const st = document.getElementById('pdfBtn').closest('section.card').querySelector('.step'); if(st) st.textContent = '7';
+}
+// el dictamen se actualiza cuando cambian mediciones o límites
+{ let t = null; const ob = new MutationObserver(() => { clearTimeout(t); t = setTimeout(() => { try{ renderCierre(); }catch(e){} }, 120); });
+  ['measList', 'limitsBox'].forEach(id => { const el = document.getElementById(id); if(el) ob.observe(el, { childList: true }); }); }
+document.addEventListener('input', e => { if(e.target.closest && e.target.closest('#limitsBox, .limits')) setTimeout(renderCierre, 0); });
+document.addEventListener('change', e => { if(e.target.closest && e.target.closest('#limitsBox, .limits')) setTimeout(renderCierre, 0); });
+
+/* ---------- mapa de mediciones ---------- */
+let leafletP = null;
+function cargarLeaflet(){
+  if(window.L && L.map) return Promise.resolve();
+  if(leafletP) return leafletP;
+  leafletP = new Promise((ok, mal) => {
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'; document.head.appendChild(css);
+    const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    s.onload = () => ok(); s.onerror = () => { leafletP = null; mal(new Error('sin conexión para cargar el mapa')); }; document.head.appendChild(s);
+  });
+  return leafletP;
+}
+async function verMapa(){
+  const pts = S.meas.map((m, i) => ({ m, i, c: DT.gpsCoords(m.gps) })).filter(x => x.c);
+  const ov = document.createElement('div'); ov.className = 'bae-modal';
+  ov.innerHTML = `<div class="bm-box"><div class="bm-top"><b>Mediciones en el mapa (${pts.length})</b><button class="bm-x" aria-label="Cerrar">✕</button></div>
+    ${pts.length ? '<div class="mapa" id="mapaMed"></div><p class="bm-hint">Tocá un punto para ver la medición. Verde: cumple · Rojo: no cumple.</p>' : '<p>Ninguna medición tiene ubicación GPS. Guardalas con la casilla "Guardar la ubicación GPS" tildada, o cargá la ubicación con 📍 en cada medición.</p>'}</div>`;
+  document.body.appendChild(ov); document.documentElement.style.overflow = 'hidden';
+  const cerrar = () => { ov.remove(); document.documentElement.style.overflow = ''; };
+  ov.querySelector('.bm-x').onclick = cerrar; ov.addEventListener('click', e => { if(e.target === ov) cerrar(); });
+  if(!pts.length) return;
+  try{ await cargarLeaflet(); }catch(e){ ov.querySelector('.mapa').outerHTML = '<p>' + esc(e.message) + '.</p>'; return; }
+  const mapa = L.map('mapaMed'); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
+  const b = [];
+  pts.forEach(({ m, i, c }) => {
+    const ev = DT.evaluate(m), ll = [+c[0], +c[1]]; b.push(ll);
+    L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="pin-num${ev.cls === 'bad' ? ' bad' : ''}">${i + 1}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }) })
+      .addTo(mapa).bindPopup(`<b>${i + 1}. ${esc(m.func)}</b>${m.ubic ? '<br>' + esc(m.ubic) : ''}<br>${esc(DT.summaryVals(m)[0])} · ${esc(ev.txt)}<br><a href="https://www.google.com/maps?q=${ll[0]},${ll[1]}" target="_blank" rel="noopener">Abrir en Google Maps</a>`);
+  });
+  if(b.length === 1) mapa.setView(b[0], 18); else mapa.fitBounds(b, { padding: [30, 30], maxZoom: 19 });
+  setTimeout(() => mapa.invalidateSize(), 50);
+}
+{ const ml = document.getElementById('measList'), h2 = ml && ml.closest('section.card').querySelector('h2');
+  if(h2){ const w = document.createElement('div'); w.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px';
+    h2.parentNode.insertBefore(w, h2); w.appendChild(h2); h2.style.margin = '0';
+    const bt = document.createElement('button'); bt.className = 'mapa-btn'; bt.textContent = '🗺 Mapa'; bt.title = 'Ver las mediciones con GPS en el mapa'; bt.onclick = verMapa; w.appendChild(bt); } }
+
+/* ---------- informe nuevo para un cliente (desde agenda o presupuesto) ---------- */
+function nuevoPara(c){
+  guardarBorrador(); if(!vacio() && !lista.some(x => x.id === actualId)) guardar();
+  nuevo(); ponerReporte({ empresa: c.empresa || c.nombre || '', cuit: c.cuit || '', obra: c.obra || '', direccion: c.direccion || [c.direccion, c.localidad].filter(Boolean).join(', ') });
+  guardarBorrador(); render(); renderCierre();
+}
+
 /* el PDF del informe también lo guarda */
 document.addEventListener('click', e => { if(e.target && e.target.id === 'pdfBtn' && !vacio()){ guardarBorrador(); if(guardar()){ render(); sincronizar(true); } } }, true);
 window.addEventListener('hashchange', () => { if(location.hash === '#informe'){ render(); sincronizar(false); } });
 window.addEventListener('online', () => sincronizar(false));
 if(N) N.onCambio(() => { if(location.hash === '#informe') render(); });
 
-render(); renderFotos();
+render(); renderFotos(); renderCierre(); renderMiFirma();
 if(location.hash === '#informe') setTimeout(() => sincronizar(false), 300);
-window.__informes = { get lista(){ return lista; }, sincronizar, guardar, nuevo };
+window.__informes = { get lista(){ return lista; }, sincronizar, guardar, nuevo, nuevoPara, firmar };
 })();
