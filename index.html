@@ -120,7 +120,7 @@
     <div class="drop fuente" id="drop" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
       <b>Archivos</b><small>del equipo</small>
-      <input type="file" id="fileInput" accept=".txt,text/plain" multiple hidden>
+      <input type="file" id="fileInput" accept=".txt,text/plain,image/*" multiple hidden>
     </div>
     <button type="button" class="fuente" id="srcDrive">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/></svg>
@@ -363,7 +363,7 @@
 'use strict';
 
 /* ---------- estado ---------- */
-const state = { files: [], meas: [], limits: {}, report: {} };
+const state = { files: [], meas: [], limits: {}, report: {}, fotos: [] };
 let downloadsP = null;
 function getDownloads(){
   if(!(window.claude && typeof window.claude.use === 'function')) return Promise.resolve(null);
@@ -481,10 +481,10 @@ function setMsg(sel, t, err){ const el = $(sel); el.textContent = t; el.classLis
 
 const drop = $('#drop'), fi = $('#fileInput');
 drop.addEventListener('click', () => fi.click());
-fi.addEventListener('change', () => { const l = [...fi.files]; fi.value = ''; handleFiles(l); });
+fi.addEventListener('change', () => { const l = [...fi.files]; fi.value = ''; (window.__dt.cargar || handleFiles)(l); });
 ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
-drop.addEventListener('drop', e => handleFiles([...e.dataTransfer.files]));
+drop.addEventListener('drop', e => (window.__dt.cargar || handleFiles)([...e.dataTransfer.files]));
 $('#pasteBtn').addEventListener('click', () => {
   const t = $('#pasteText').value; if(!t.trim()) return;
   let n = $('#pasteName').value.trim() || 'medicion.txt'; if(!/\.txt$/i.test(n)) n += '.txt';
@@ -712,7 +712,7 @@ function gpsErr(e){
 }
 
 /* ---------- render ---------- */
-function renderAll(){ renderChips(); renderLimits(); renderMeas(); ['#pdfBtn','#zipBtn','#csvBtn'].forEach(s => $(s).disabled = !state.meas.length); }
+function renderAll(){ renderChips(); renderLimits(); renderMeas(); ['#zipBtn','#csvBtn'].forEach(s => $(s).disabled = !state.meas.length); $('#pdfBtn').disabled = !state.meas.length && !state.fotos.length; }
 function renderChips(){
   $('#fileChips').innerHTML = state.files.map(f => `<span class="chip">${esc(f)} <button title="Quitar" data-rm="${esc(f)}">×</button></span>`).join('');
   $('#fileChips').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
@@ -887,10 +887,10 @@ $('#pdfBtn').onclick = async () => {
     doc.setFont('helvetica','normal'); doc.setFontSize(10); const lines = doc.splitTextToSize(pdfSafe(r.observaciones), PW-2*M); need(lines.length*5); doc.text(lines, M, y); y += lines.length*5 + 4; }
 
   // pantallas
-  doc.addPage(); y = M;
+  if(state.meas.length){ doc.addPage(); y = M; }
   doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Registro de pantallas del instrumento', M, y+4); y += 10;
   const iw = 120, ih2 = iw * H / W;
-  for(let i=0;i<state.meas.length;i++){
+  if(state.meas.length) for(let i=0;i<state.meas.length;i++){
     const m = state.meas[i];
     need(ih2 + 18);
     const cv = document.createElement('canvas'); drawScreen(m, cv);
@@ -909,6 +909,24 @@ $('#pdfBtn').onclick = async () => {
     const gu = gpsUrl(m.gps);
     if(gu){ doc.setFontSize(8.5); doc.setTextColor(...blue); doc.textWithLink(pdfSafe('GPS: ' + String(m.gps).replace(/\s*\(.*\)/, '')), tx, ty+14, { url: gu }); }
     y += ih2 + 10;
+  }
+  // imágenes y fotos
+  const fotos = window.__dt.fotosParaPdf ? await window.__dt.fotosParaPdf() : [];
+  if(fotos.length){
+    setMsg('#dlMsg', 'Agregando imágenes…');
+    doc.addPage(); y = M;
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Imágenes y fotos', M, y+4); y += 10;
+    const cw = (PW - 2*M - 6) / 2, maxH = 95; let col = 0, rowH = 0;
+    for(let i=0;i<fotos.length;i++){
+      const f = fotos[i]; let w = cw, hh = cw * f.h / f.w; if(hh > maxH){ hh = maxH; w = maxH * f.w / f.h; }
+      if(col === 0){ need(hh + 14); rowH = 0; }
+      const x = M + col * (cw + 6) + (cw - w) / 2;
+      doc.addImage(f.data, 'JPEG', x, y, w, hh);
+      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(60);
+      const t = doc.splitTextToSize(pdfSafe(`${i+1}. ${f.titulo || 'Imagen'}`), cw); doc.text(t, M + col * (cw + 6), y + hh + 4);
+      rowH = Math.max(rowH, hh + 4 + t.length * 4 + 4);
+      if(col === 1 || i === fotos.length - 1){ y += rowH; col = 0; } else col = 1;
+    }
   }
   // firma
   need(30); y += 14; doc.setDrawColor(150); doc.line(PW-M-70, y, PW-M, y);
@@ -1053,11 +1071,11 @@ window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles }
 })();
 </script>
 <script src="logo.js?v=1"></script>
-<script src="nube.js?v=4"></script>
+<script src="nube.js?v=5"></script>
 <script src="srt.js?v=15"></script>
 <script src="precios-ref.js?v=1"></script>
 <script src="presu.js?v=11"></script>
-<script src="informes.js?v=4"></script>
+<script src="informes.js?v=5"></script>
 <script>
 // instalable como app (GitHub Pages); dentro de Claude simplemente se omite
 if('serviceWorker' in navigator && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)){

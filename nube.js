@@ -135,6 +135,7 @@ async function listar(tipo, nombreCarpeta){
   return out;
 }
 async function bajar(id){ return (await api(`${API}/files/${id}?alt=media`)).json(); }
+async function bajarBlob(id){ return (await api(`${API}/files/${id}?alt=media`)).blob(); }
 async function subir({ id, name, mime, data, props, carpeta: nombreCarpeta }){
   const meta = { name, mimeType: mime, appProperties: props };
   if(!id) meta.parents = [await carpeta(nombreCarpeta)];
@@ -215,7 +216,7 @@ function elegirArchivos({ mimes = 'text/plain', titulo = 'Elegí los archivos' }
 
 window.__nube = {
   get email(){ return auth && auth.email; }, get conectado(){ return tokenOk(); },
-  pedirToken, salir, carpeta, listar, bajar, subir, papelera, onCambio: f => oyentes.add(f),
+  pedirToken, salir, carpeta, listar, bajar, bajarBlob, subir, papelera, onCambio: f => oyentes.add(f),
   olvidarCarpeta(nombre = CARPETA){ delete carpetas[nombre]; ls.set('bae.drive.carpetas', carpetas); ls.del('bae.drive.carpeta'); },
   sincronizarColeccion, elegirArchivos, precargarPicker: () => cargarPicker().catch(() => {})
 };

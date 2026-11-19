@@ -27,8 +27,9 @@ function ponerReporte(rep){
     S.report[k] = el.value;
   });
 }
-const foto = () => ({ report: Object.fromEntries(CLIENTE.concat('fecha').map(k => [k, S.report[k] || ''])), meas: S.meas, files: S.files });
-const vacio = () => !S.meas.length && !CLIENTE.some(k => String(S.report[k] || '').trim());
+if(!Array.isArray(S.fotos)) S.fotos = [];
+const foto = () => ({ report: Object.fromEntries(CLIENTE.concat('fecha').map(k => [k, S.report[k] || ''])), meas: S.meas, files: S.files, fotos: S.fotos });
+const vacio = () => !S.meas.length && !S.fotos.length && !CLIENTE.some(k => String(S.report[k] || '').trim());
 const titulo = x => [x.report && x.report.empresa || 'Sin empresa', x.report && x.report.obra].filter(Boolean).join(' · ');
 
 function limites(){
@@ -48,6 +49,7 @@ function guardarBorrador(){
   if(b.id) actualId = b.id;
   ponerReporte(b.report || {});
   if(Array.isArray(b.meas) && b.meas.length){ S.meas.length = 0; b.meas.forEach(m => S.meas.push(m)); S.files.length = 0; (b.files || []).forEach(f => S.files.push(f)); }
+  S.fotos.length = 0; (b.fotos || []).forEach(f => S.fotos.push(f));
   limites(); ultimo = JSON.stringify(foto()); DT.renderAll();
 })();
 setInterval(guardarBorrador, 2000);
@@ -57,21 +59,21 @@ window.addEventListener('pagehide', guardarBorrador);
 /* ---------- guardar / abrir ---------- */
 function guardar(){
   if(vacio()) return msg('Cargá al menos la empresa o una medición antes de guardar.', true), false;
-  const rec = Object.assign({ id: actualId }, JSON.parse(JSON.stringify(foto())), { _mod: Date.now(), _dirty: true, n: S.meas.length });
+  const rec = Object.assign({ id: actualId }, JSON.parse(JSON.stringify(foto())), { _mod: Date.now(), _dirty: true, n: S.meas.length, nf: S.fotos.length });
   const i = lista.findIndex(x => x.id === actualId);
   if(i >= 0){ rec._driveId = lista[i]._driveId; lista[i] = rec; } else lista.push(rec);
   store.set('bae.inf.lista', lista); return true;
 }
 function nuevo(){
-  actualId = 'i' + Date.now(); S.meas.length = 0; S.files.length = 0; ponerReporte({});
-  DT.renderAll(); guardarBorrador();
+  actualId = 'i' + Date.now(); S.meas.length = 0; S.files.length = 0; S.fotos.length = 0; ponerReporte({});
+  DT.renderAll(); guardarBorrador(); renderFotos();
 }
 function abrir(x, copia){
   actualId = copia ? 'i' + Date.now() : x.id;
   ponerReporte(copia ? Object.assign({}, x.report, { fecha: '' }) : (x.report || {}));
-  S.meas.length = 0; S.files.length = 0;
-  if(!copia){ (x.meas || []).forEach(m => S.meas.push(JSON.parse(JSON.stringify(m)))); (x.files || []).forEach(f => S.files.push(f)); }
-  limites(); DT.renderAll(); guardarBorrador(); render(); window.scrollTo(0, 0);
+  S.meas.length = 0; S.files.length = 0; S.fotos.length = 0;
+  if(!copia){ (x.meas || []).forEach(m => S.meas.push(JSON.parse(JSON.stringify(m)))); (x.files || []).forEach(f => S.files.push(f)); (x.fotos || []).forEach(f => S.fotos.push(Object.assign({}, f))); }
+  limites(); DT.renderAll(); guardarBorrador(); render(); renderFotos(); window.scrollTo(0, 0);
 }
 
 /* ---------- interfaz ---------- */
@@ -120,7 +122,7 @@ function filaHTML(x){
   const r = x.report || {}, q = sinAcentos([r.empresa, r.obra, r.direccion, r.cuit, fmtD(r.fecha)].join(' ')), n = x.n ?? (x.meas || []).length;
   return `<div class="if-row${x.id === actualId ? ' actual' : ''}" data-q="${esc(q)}" data-iabrir="${x.id}" role="button" tabindex="0" title="Abrir">
     <div class="info"><b>${esc(r.empresa || 'Sin empresa')}${x.id === actualId ? ' <em>abierto</em>' : ''}</b>${r.obra ? `<span>${esc(r.obra)}</span>` : ''}
-    <span class="meta">${esc(fmtD(r.fecha) || 'Sin fecha')} · ${n} medición${n === 1 ? '' : 'es'}</span></div>
+    <span class="meta">${esc(fmtD(r.fecha) || 'Sin fecha')} · ${n} medición${n === 1 ? '' : 'es'}${(x.nf ?? (x.fotos || []).length) ? ' · ' + (x.nf ?? x.fotos.length) + ' imagen' + ((x.nf ?? x.fotos.length) === 1 ? '' : 'es') : ''}</span></div>
     <div class="acts"><button data-idup="${x.id}" title="Nuevo informe para el mismo cliente, sin mediciones">Repetir</button><button data-iborrar="${x.id}" title="Borrar" aria-label="Borrar">✕</button></div></div>`;
 }
 function render(){
@@ -144,6 +146,7 @@ function render(){
   $$('[data-iborrar]', card).forEach(x => x.onclick = () => {
     if(x.dataset.ok !== '1'){ x.dataset.ok = '1'; x.textContent = '¿Borrar?'; setTimeout(() => { if(x.isConnected){ x.dataset.ok = ''; x.textContent = '✕'; } }, 3000); return; }
     const r = lista.find(y => y.id === x.dataset.iborrar); if(r && r._driveId){ borrados.push(r._driveId); store.set('bae.inf.borrados', borrados); }
+    if(r) fotosHuerfanas(r);
     lista = lista.filter(y => y.id !== x.dataset.iborrar); store.set('bae.inf.lista', lista);
     if(x.dataset.iborrar === actualId) nuevo();
     render(); sincronizar(true);
@@ -171,6 +174,7 @@ async function sincronizar(interactivo){
         lista: () => lista, setLista: l => { lista = l; store.set('bae.inf.lista', lista); },
         borrados: () => borrados, setBorrados: b => { borrados = b; store.set('bae.inf.borrados', borrados); },
         nombre: x => ('Informe_' + ((x.report || {}).fecha || '') + '_' + titulo(x).replace(/ · /g, ' - ')).replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim() });
+      await sincronizarFotos();
       store.set('bae.inf.ult', Date.now()); sinc = { txt: '', err: false }; ok = true;
     }catch(e){
       if(e.code === 'TOKEN') estado('La conexión con Drive venció: tocá "Sincronizar".', true);
@@ -179,11 +183,130 @@ async function sincronizar(interactivo){
     }finally{
       corriendo = null;
       if(ok){ const a = document.activeElement; if(!(a && card.contains(a) && a.id === 'ifBuscar')) render(); else estado(''); }
+      if(ok && S.fotos.length && $('#infFotos .img:not([style*="background-image"])')) renderFotos();
       if(otraVez){ otraVez = false; sincronizar(false); }
     }
   })();
   return corriendo;
 }
+
+/* ---------- imágenes y fotos ---------- */
+const MIMES_DRIVE = 'text/plain,application/octet-stream,image/png,image/jpeg,image/webp,image/gif,image/heic';
+const esImagen = f => /^image\//.test(f.type || f.mimeType || '') || /\.(png|jpe?g|webp|gif|heic|bmp)$/i.test(f.name || '');
+const idb = (() => {
+  let dbp = null;
+  const db = () => dbp || (dbp = new Promise((ok, mal) => { const r = indexedDB.open('bae-fotos', 1); r.onupgradeneeded = () => r.result.createObjectStore('f'); r.onsuccess = () => ok(r.result); r.onerror = () => mal(r.error); }));
+  const tx = (modo, fn) => db().then(d => new Promise((ok, mal) => { const t = d.transaction('f', modo); const q = fn(t.objectStore('f')); t.oncomplete = () => ok(q && q.result); t.onerror = () => mal(t.error); }));
+  return { get: k => tx('readonly', s => s.get(k)), put: (k, v) => tx('readwrite', s => s.put(v, k)), del: k => tx('readwrite', s => s.delete(k)) };
+})();
+let fotosDrive = store.get('bae.fotos.drive', {});        // id de foto -> id de archivo en Drive
+async function achicar(blob){
+  const max = 1600;
+  try{
+    const bmp = await createImageBitmap(blob);
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(bmp, 0, 0, c.width, c.height);
+    return await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.82));
+  }catch(e){ throw new Error('no se pudo abrir la imagen (formato no compatible)'); }
+}
+async function agregarImagenes(lista0){
+  let n = 0;
+  for(const f of lista0){
+    try{
+      const blob = f instanceof Blob ? f : new Blob([await f.arrayBuffer()], { type: f.mimeType || 'image/*' });
+      const j = await achicar(blob), id = 'f' + Date.now() + Math.random().toString(36).slice(2, 6);
+      await idb.put(id, j);
+      S.fotos.push({ id, titulo: String(f.name || 'Imagen').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ') }); n++;
+    }catch(e){ decirCarga(`No pude cargar "${f.name}": ${e.message}.`, true); }
+  }
+  if(n){ guardarBorrador(); renderFotos(); DT.renderAll(); decirCarga(`${n} imagen${n > 1 ? 'es agregadas' : ' agregada'} al informe.`); }
+}
+function decirCarga(t, err){ const m = document.getElementById('loadMsg'); if(m){ m.textContent = t; m.classList.toggle('err', !!err); } }
+async function cargar(list){
+  const imgs = [], txts = [];
+  [...list].forEach(f => (esImagen(f) ? imgs : txts).push(f));
+  if(txts.length) await DT.handleFiles(txts);
+  if(imgs.length) await agregarImagenes(imgs);
+}
+DT.cargar = cargar;
+async function blobFoto(id){
+  let b = await idb.get(id).catch(() => null); if(b) return b;
+  if(!(N && N.conectado)) return null;
+  let did = fotosDrive[id];
+  if(!did){ const fs = await N.listar('foto', CARPETA); fs.forEach(f => { if(f.appProperties && f.appProperties.id) fotosDrive[f.appProperties.id] = f.id; }); store.set('bae.fotos.drive', fotosDrive); did = fotosDrive[id]; }
+  if(!did) return null;
+  b = await N.bajarBlob(did); await idb.put(id, b); return b;
+}
+async function sincronizarFotos(){
+  const ids = new Set(); lista.concat([{ fotos: S.fotos }]).forEach(x => (x.fotos || []).forEach(f => ids.add(f.id)));
+  if(!ids.size) return;
+  const rem = await N.listar('foto', CARPETA); rem.forEach(f => { if(f.appProperties && f.appProperties.id) fotosDrive[f.appProperties.id] = f.id; });
+  for(const id of ids){
+    if(fotosDrive[id]) continue;
+    const b = await idb.get(id).catch(() => null); if(!b) continue;
+    fotosDrive[id] = await N.subir({ name: 'Imagen_' + id + '.jpg', mime: 'image/jpeg', data: b, props: { bae: 'foto', id }, carpeta: CARPETA });
+  }
+  store.set('bae.fotos.drive', fotosDrive);
+}
+function fotosHuerfanas(r){
+  const usadas = new Set(); lista.filter(x => x.id !== r.id).concat([{ fotos: S.fotos }]).forEach(x => (x.fotos || []).forEach(f => usadas.add(f.id)));
+  (r.fotos || []).forEach(f => { if(usadas.has(f.id)) return; if(fotosDrive[f.id]){ borrados.push(fotosDrive[f.id]); delete fotosDrive[f.id]; } idb.del(f.id).catch(() => {}); });
+  store.set('bae.inf.borrados', borrados); store.set('bae.fotos.drive', fotosDrive);
+}
+DT.fotosParaPdf = async () => {
+  const out = [];
+  for(const f of S.fotos){
+    const b = await blobFoto(f.id).catch(() => null); if(!b) continue;
+    const data = await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(b); });
+    const dim = await new Promise(ok => { const im = new Image(); im.onload = () => ok({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => ok({ w: 4, h: 3 }); im.src = data; });
+    out.push(Object.assign({ titulo: f.titulo, data }, dim));
+  }
+  return out;
+};
+// tarjeta "Imágenes y fotos", antes de "Descargar"
+const fcard = document.createElement('section'); fcard.className = 'card'; fcard.id = 'infFotos';
+{ const pdf = document.getElementById('pdfBtn'), desc = pdf && pdf.closest('section.card'); if(desc) desc.parentNode.insertBefore(fcard, desc); else v.appendChild(fcard); }
+const fcss = document.createElement('style');
+fcss.textContent = `
+  #infFotos .fx-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+  #infFotos .fx-top h2{margin:0}
+  #infFotos .fx-btns{display:flex;gap:8px}
+  #infFotos .fx-btns button{padding:8px 12px;white-space:nowrap}
+  #infFotos .fx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:10px}
+  #infFotos .fx{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+  #infFotos .fx .img{aspect-ratio:4/3;background:var(--neutral-bg) center/cover no-repeat;display:grid;place-items:center;color:var(--muted);font-size:12px}
+  #infFotos .fx input{border:none;border-top:1px solid var(--line);border-radius:0;margin:0;padding:8px 10px;font-size:13px;width:100%;box-sizing:border-box}
+  #infFotos .fx .x{position:absolute;top:6px;right:6px;width:28px;height:28px;padding:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;font-size:14px;line-height:1}
+  #infFotos .vacio{font-size:13px;color:var(--muted);margin:6px 0 0}`;
+document.head.appendChild(fcss);
+const urls = {};
+function renderFotos(){
+  Object.values(urls).forEach(u => URL.revokeObjectURL(u)); for(const k in urls) delete urls[k];
+  fcard.innerHTML = `<div class="fx-top"><h2><span class="step">5</span> Imágenes</h2><div class="fx-btns"><button id="fxTel" title="Desde el teléfono o la PC">+ Agregar</button><button id="fxDrive" title="Desde Google Drive">Drive</button></div></div>
+    <input type="file" id="fxIn" accept="image/*" multiple hidden>
+    ${S.fotos.length ? '' : '<p class="vacio">Sumá fotos de la obra o capturas de pantalla. Salen en el PDF con su título.</p>'}
+    <div class="fx-grid">${S.fotos.map((f, i) => `<div class="fx"><div class="img" data-fimg="${i}">…</div><button class="x" data-fdel="${i}" title="Quitar" aria-label="Quitar">✕</button><input data-ftit="${i}" value="${esc(f.titulo)}" placeholder="Título"></div>`).join('')}</div>`;
+  const inp = $('#fxIn', fcard);
+  $('#fxTel', fcard).onclick = () => inp.click();
+  inp.onchange = () => { const l = [...inp.files]; inp.value = ''; agregarImagenes(l); };
+  $('#fxDrive', fcard).onclick = async () => {
+    if(!N || !N.email) return;
+    try{ const docs = await N.elegirArchivos({ mimes: 'image/png,image/jpeg,image/webp,image/gif,image/heic', titulo: 'Elegí imágenes para el informe' }); if(docs.length) await agregarImagenes(docs); }
+    catch(e){ decirCarga('No se pudo cargar desde Drive: ' + e.message + '.', true); }
+  };
+  $$('[data-ftit]', fcard).forEach(el => el.oninput = () => { S.fotos[+el.dataset.ftit].titulo = el.value; });
+  $$('[data-fdel]', fcard).forEach(b => b.onclick = () => { S.fotos.splice(+b.dataset.fdel, 1); guardarBorrador(); renderFotos(); DT.renderAll(); });
+  S.fotos.forEach(async (f, i) => {
+    const el = $(`[data-fimg="${i}"]`, fcard); if(!el) return;
+    const b = await blobFoto(f.id).catch(() => null);
+    if(!el.isConnected) return;
+    if(b){ urls[f.id] = URL.createObjectURL(b); el.style.backgroundImage = `url("${urls[f.id]}")`; el.textContent = ''; }
+    else el.textContent = '☁ Sincronizá para verla';
+  });
+}
+// renumerar el paso "Descargar" (pasa a 6)
+{ const st = document.getElementById('pdfBtn'); const h = st && st.closest('section.card').querySelector('.step'); if(h) h.textContent = '6'; }
 
 /* ---------- fuentes de mediciones: archivos, Drive y Bluetooth ---------- */
 (function(){
@@ -194,7 +317,7 @@ async function sincronizar(interactivo){
   if(card){
     ['dragenter', 'dragover'].forEach(ev => card.addEventListener(ev, e => { if(e.dataTransfer && [...e.dataTransfer.types].includes('Files')){ e.preventDefault(); card.classList.add('over'); } }));
     ['dragleave', 'drop'].forEach(ev => card.addEventListener(ev, e => { if(ev === 'dragleave' && card.contains(e.relatedTarget)) return; card.classList.remove('over'); }));
-    card.addEventListener('drop', e => { if(e.target.closest('#drop')) return; e.preventDefault(); DT.handleFiles([...e.dataTransfer.files]); });
+    card.addEventListener('drop', e => { if(e.target.closest('#drop')) return; e.preventDefault(); cargar([...e.dataTransfer.files]); });
   }
   // Drive
   const bd = document.getElementById('srcDrive');
@@ -202,10 +325,10 @@ async function sincronizar(interactivo){
     if(!N || !N.email){ decir('Ingresá con tu cuenta de Google para usar Drive.', true); return; }
     decir('Abriendo Google Drive…');
     try{
-      const docs = await N.elegirArchivos({ mimes: 'text/plain,application/octet-stream', titulo: 'Elegí los .txt del DT-6650' });
+      const docs = await N.elegirArchivos({ mimes: MIMES_DRIVE, titulo: 'Elegí los .txt del DT-6650 o imágenes' });
       if(!docs.length){ decir(''); return; }
       decir(`Descargando ${docs.length} archivo${docs.length > 1 ? 's' : ''} de Drive…`);
-      await DT.handleFiles(docs);
+      await cargar(docs);
     }catch(e){ decir('No se pudo cargar desde Drive: ' + e.message + '.', true); }
   };
   if(N && N.email) setTimeout(() => N.precargarPicker(), 1500);
@@ -228,7 +351,7 @@ window.addEventListener('hashchange', () => { if(location.hash === '#informe'){ 
 window.addEventListener('online', () => sincronizar(false));
 if(N) N.onCambio(() => { if(location.hash === '#informe') render(); });
 
-render();
+render(); renderFotos();
 if(location.hash === '#informe') setTimeout(() => sincronizar(false), 300);
 window.__informes = { get lista(){ return lista; }, sincronizar, guardar, nuevo };
 })();
