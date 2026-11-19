@@ -33,10 +33,23 @@
   section.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
   section.card h2{font-size:16px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
   .step{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:700}
-  .drop{border:2px dashed var(--line);border-radius:10px;padding:26px;text-align:center;cursor:pointer;transition:.15s}
-  .drop.over,.drop:hover{border-color:var(--accent);background:var(--neutral-bg)}
-  .drop strong{display:block;font-size:16px;margin-bottom:4px}
-  .drop span{color:var(--muted)}
+  .fuentes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .fuente{display:grid;justify-items:center;align-content:center;gap:2px;padding:14px 6px 12px;min-height:96px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);cursor:pointer;text-align:center;font-weight:600;transition:border-color .15s, background .15s, transform .1s}
+  .fuente svg{width:28px;height:28px;margin-bottom:4px;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .fuente b{font-size:15px;font-weight:600}
+  .fuente small{font-size:12px;font-weight:400;color:var(--muted)}
+  .fuente:hover,.fuente:focus-visible{border-color:var(--accent);background:var(--neutral-bg);outline:none}
+  .fuente:active{transform:scale(.97)}
+  .fuente:disabled{opacity:.5;cursor:default;transform:none;background:var(--card);border-color:var(--line)}
+  .fuente.on{border-color:var(--accent);background:var(--neutral-bg)}
+  section.card.over{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent)}
+  .arrastre{display:none;margin:8px 0 0;font-size:12.5px;color:var(--muted);text-align:center}
+  @media (hover:hover) and (pointer:fine){ .arrastre{display:block} }
+  summary.mini{font-size:13px;color:var(--muted);margin-top:10px}
+  #view-informe #btBox > h3, #view-informe #btConnect, #view-informe #btNote{display:none}
+  #view-informe #btBox > .row:has(#btDisconnect[hidden]){display:none}
+  #view-informe #btBox:has(#btDisconnect[hidden]):has(#liveBox[hidden]){display:none}
+  #view-informe #loadMsg:empty{display:none}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   button{font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 14px;cursor:pointer}
   button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -103,14 +116,25 @@
 
 <section class="card">
   <h2><span class="step">1</span> Cargar mediciones</h2>
-  <div class="drop" id="drop">
-    <strong>Arrastrá acá los archivos .txt del DT-6650</strong>
-    <span>o hacé clic para elegirlos (podés cargar varios)</span>
-    <input type="file" id="fileInput" accept=".txt,text/plain" multiple hidden>
+  <div class="fuentes" id="fuentes">
+    <div class="drop fuente" id="drop" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+      <b>Archivos</b><small>del equipo</small>
+      <input type="file" id="fileInput" accept=".txt,text/plain" multiple hidden>
+    </div>
+    <button type="button" class="fuente" id="srcDrive">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/></svg>
+      <b>Drive</b><small>tu cuenta</small>
+    </button>
+    <button type="button" class="fuente" id="srcBt">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></svg>
+      <b>Bluetooth</b><small id="srcBtSub">en vivo</small>
+    </button>
   </div>
+  <p class="arrastre">También podés arrastrar los .txt a este recuadro.</p>
   <div class="files" id="fileChips"></div>
   <details>
-    <summary>Pegar el texto en lugar de cargar un archivo</summary>
+    <summary class="mini">Pegar el texto de un archivo</summary>
     <div style="margin-top:10px;display:grid;gap:8px">
       <label>Nombre del archivo<input id="pasteName" placeholder="ej. FARMACOOP.txt"></label>
       <label>Contenido<textarea id="pasteText" placeholder="EARTH       F1          F2 ..."></textarea></label>
@@ -443,7 +467,7 @@ function addText(name, text){
     if(isRcd(m)){ if(!L || L.x1 === undefined) state.limits[m.func] = { x1: '300', x5: '40', half: 'si' }; }
     else if(!L) state.limits[m.func] = { lim: '', crit: defaultCrit(m.func) };
   });
-  setMsg('#loadMsg', `${ms.length} medición${ms.length>1?'es':''} cargada${ms.length>1?'s':''} de "${name}".`);
+  setMsg('#loadMsg', `${ms.length} ${ms.length>1?'mediciones':'medición'} cargada${ms.length>1?'s':''} de "${name}".`);
   renderAll();
 }
 function defaultCrit(f){ return /INS|ISO|RISO|MEG/i.test(f) ? 'min' : 'max'; }
@@ -1025,14 +1049,15 @@ if(!btSupported()) { $('#btConnect').disabled = true; $('#btAll').hidden = true;
 
 getDownloads();
 // compartido con el módulo de protocolo SRT y diseño de PAT
-window.__dt = { state, save, isRcd, rcdVals, xval, num };
+window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles };
 })();
 </script>
 <script src="logo.js?v=1"></script>
-<script src="nube.js?v=1"></script>
-<script src="srt.js?v=14"></script>
+<script src="nube.js?v=4"></script>
+<script src="srt.js?v=15"></script>
 <script src="precios-ref.js?v=1"></script>
-<script src="presu.js?v=10"></script>
+<script src="presu.js?v=11"></script>
+<script src="informes.js?v=4"></script>
 <script>
 // instalable como app (GitHub Pages); dentro de Claude simplemente se omite
 if('serviceWorker' in navigator && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)){

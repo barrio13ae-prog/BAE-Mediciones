@@ -107,11 +107,6 @@ css.textContent = `
   .pz-tot{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--neutral-bg)}
   .pz-big{font-size:22px;color:var(--accent)}
   .pz-list{display:grid;gap:8px}
-  .pz-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
-  .pz-row b{display:block}
-  .pz-row span{font-size:13px;color:var(--muted)}
-  .pz-row .acts{display:flex;gap:6px;flex-shrink:0}
-  .pz-row .acts button{padding:6px 10px;font-size:13px}
   .pz-fmt{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .pz-fmt label{display:block;padding:12px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer}
   .pz-fmt label.on{border-color:var(--accent);background:var(--neutral-bg)}
@@ -122,20 +117,36 @@ css.textContent = `
   .pz-cond{display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:start}
   #view-presu .pz-cond textarea{min-height:44px;font-size:14px;margin:0;field-sizing:content;resize:vertical}
   .pz-cond .del{padding:8px 0;font-size:16px}
-  .pz-row.actual{border-color:var(--accent)}
-  .pz-row em{font-style:normal;color:var(--accent);font-weight:500;font-size:13px}
   .pz-sticky{transition:transform .25s ease, opacity .25s ease}
   .pz-sticky.oculta{transform:translateY(130%);opacity:0;pointer-events:none}
   .pz-banco{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:12px;display:grid;gap:8px}
   .pz-banco-datos{font-size:14px;line-height:1.5;padding:8px 10px;border-radius:8px;background:var(--neutral-bg)}
-  .pz-nube{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;margin-bottom:12px;border-radius:12px;background:var(--neutral-bg);border:1px solid var(--line)}
-  .pz-nube.err{border-color:#d92d20}
-  .pz-nube div{display:grid;gap:2px;min-width:0}
-  .pz-nube span{font-size:13px;color:var(--muted)}
-  .pz-nube.err #pzNubeTxt{color:#b42318}
-  .pz-nube .cta{font-size:12px}
-  .pz-nube a{color:var(--accent)}
-  .pz-nube button{flex-shrink:0;padding:8px 12px}
+  .pz-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .pz-top h2{margin:0}
+  .pz-top button{padding:8px 14px}
+  .pz-nube{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;margin:0 0 10px;border-radius:999px;background:var(--neutral-bg);font-size:13px;color:var(--muted)}
+  .pz-nube svg{width:18px;height:18px;flex-shrink:0;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linejoin:round}
+  .pz-nube .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pz-nube button{width:32px;height:32px;padding:0;border-radius:50%;font-size:16px;line-height:1;flex-shrink:0}
+  .pz-nube.err{background:color-mix(in srgb, #d92d20 10%, var(--card))}
+  .pz-nube.err .t{color:#b42318;white-space:normal}
+  .pz-nube.err svg{stroke:#b42318}
+  #pzMsgTop:empty{display:none}
+  #pzBuscar{margin:0}
+  .pz-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 10px 10px 14px;border:1px solid var(--line);border-radius:12px;cursor:pointer;transition:border-color .15s, background .15s}
+  .pz-row:hover{border-color:var(--accent)}
+  .pz-row.actual{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 5%, var(--card))}
+  .pz-row .info{display:grid;gap:1px;min-width:0}
+  .pz-row .info > b{font-size:14.5px}
+  .pz-row .info span{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pz-row .meta{font-size:12px !important;white-space:normal !important}
+  .pz-row .monto{color:var(--ink);font-weight:600}
+  .pz-row em{font-style:normal;font-weight:600;margin-left:4px;padding:1px 7px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:11px;vertical-align:1px}
+  .pz-row .acts{display:flex;gap:6px;flex-shrink:0}
+  .pz-row .acts button{padding:6px 10px;font-size:13px}
+  .pz-sesion{margin-top:12px;text-align:center}
+  .pz-precio{cursor:default}
+  .pz-sesion a{color:var(--accent)}
   .pz-hint{font-size:12.5px;color:var(--muted);margin:4px 0 8px}
   .pz-sticky{position:sticky;bottom:0;z-index:5;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 -4px 16px rgba(0,0,0,.12)}
 `;
@@ -156,9 +167,10 @@ function itemsHTML(kind){
 }
 function listaHTML(){
   if(!lista.length) return '<p class="pz-hint">Todavía no guardaste presupuestos.</p>';
-  return lista.slice().reverse().map(x => `<div class="pz-row${x.id === P.id ? ' actual' : ''}" data-q="${esc([x.numero, x.cliente, x.obra, x.direccion, fmtD(x.fecha)].join(' ').toLowerCase())}"><div><b>N° ${esc(x.numero)} · ${esc(x.cliente || 'Sin cliente')}${x.id === P.id ? ' <em>(abierto)</em>' : ''}</b>
-    <span>${fmtD(x.fecha)} · $ ${money(x._total || 0)}${x.obra ? ' · ' + esc(x.obra.slice(0, 50)) : ''}</span></div>
-    <div class="acts"><button data-abrir="${x.id}">Abrir</button><button data-dup="${x.id}" title="Usar como base">Duplicar</button><button data-borrar="${x.id}" title="Borrar">✕</button></div></div>`).join('');
+  return lista.slice().reverse().map(x => `<div class="pz-row${x.id === P.id ? ' actual' : ''}" data-q="${esc([x.numero, x.cliente, x.obra, x.direccion, fmtD(x.fecha)].join(' ').toLowerCase())}" data-abrir="${x.id}" role="button" tabindex="0" title="Abrir">
+    <div class="info"><b>${esc(x.cliente || 'Sin cliente')}${x.id === P.id ? ' <em>abierto</em>' : ''}</b>${x.obra ? `<span>${esc(x.obra)}</span>` : ''}
+    <span class="meta"><b class="monto">$ ${money(x._total || 0)}</b> · N° ${esc(x.numero)} · ${fmtD(x.fecha)}</span></div>
+    <div class="acts"><button data-dup="${x.id}" title="Nuevo presupuesto usando este como base">Duplicar</button><button data-borrar="${x.id}" title="Borrar" aria-label="Borrar">✕</button></div></div>`).join('');
 }
 const condLista = () => Array.isArray(P.condArr) ? P.condArr.slice() : (String(P.condiciones || '') === '' ? [] : String(P.condiciones).split('\n'));
 const condGuardar = arr => { P.condArr = arr; P.condiciones = arr.join('\n'); guardarActual(); };
@@ -207,7 +219,7 @@ function render(){
     <p class="pz-hint">${refNota()}</p>
     <details style="margin-top:10px"><summary>Mis precios (${precios.length})</summary>
       <p class="pz-hint">Al guardar un presupuesto, sus ítems se agregan o actualizan acá con el último precio. Tocá ✕ para quitar uno.</p>
-      <div class="pz-list">${precios.map((x, i) => `<div class="pz-row"><div><b style="font-weight:500">${esc(x.desc)}</b><span>$ ${money(num(x.precio))}</span></div><div class="acts"><button data-pdel="${i}">✕</button></div></div>`).join('')}</div>
+      <div class="pz-list">${precios.map((x, i) => `<div class="pz-row pz-precio"><div class="info"><b style="font-weight:500;white-space:normal">${esc(x.desc)}</b><span>$ ${money(num(x.precio))}</span></div><div class="acts"><button data-pdel="${i}">✕</button></div></div>`).join('')}</div>
     </details>
     ${simple() ? `<label style="margin-top:12px">Texto de la fila de total<input data-p="totalTxt" value="${esc(P.totalTxt || 'Total mano de obra')}"></label>` : ''}
     <div class="pz-tot"><span>Total ${simple() ? '' : 'mano de obra'}</span><span>$ ${money(totMO())}</span></div>
@@ -225,13 +237,13 @@ function render(){
 
 `;
   v.innerHTML = `
-  <section class="card"><h2>Mis presupuestos</h2>
-    <div class="row" style="margin-bottom:10px"><button class="primary" id="pzNuevo">+ Nuevo presupuesto</button></div>
-    <div class="msg" id="pzMsgTop" style="margin:0 0 10px"></div>
+  <section class="card"><div class="pz-top"><h2>Mis presupuestos</h2><button class="primary" id="pzNuevo">+ Nuevo</button></div>
     ${nubeHTML()}
-    ${lista.length ? `<input id="pzBuscar" type="search" placeholder="Buscar por cliente, obra, dirección o N°" style="margin-bottom:10px">
+    <div class="msg" id="pzMsgTop"></div>
+    ${lista.length ? `<input id="pzBuscar" type="search" placeholder="Buscar presupuesto…">
     <p class="pz-hint" id="pzCuenta">${lista.length} guardado${lista.length === 1 ? '' : 's'}</p>` : ''}
-    <div class="pz-list" id="pzLista">${listaHTML()}</div></section>
+    <div class="pz-list" id="pzLista">${listaHTML()}</div>
+    ${N && N.email ? `<p class="pz-hint pz-sesion">Sesión: ${esc(N.email)} · <a href="#" id="pzSalir">cerrar sesión</a></p>` : ''}</section>
 
   <section class="card"><h2>Formato</h2>
     <div class="pz-fmt">
@@ -323,7 +335,8 @@ function bind(){
   bindLista();
 }
 function bindLista(){
-  $$('[data-abrir]', v).forEach(b => b.onclick = () => { const x = lista.find(y => y.id === b.dataset.abrir); if(x){ P = JSON.parse(JSON.stringify(x)); guardarActual(); render(); window.scrollTo(0, 0); msg('Abierto el N° ' + P.numero + '.'); } });
+  $$('[data-abrir]', v).forEach(b => { const ir = e => { if(e.target.closest('button')) return; const x = lista.find(y => y.id === b.dataset.abrir); if(x){ P = JSON.parse(JSON.stringify(x)); guardarActual(); render(); window.scrollTo(0, 0); msg('Abierto el N° ' + P.numero + '.'); } };
+    b.onclick = ir; b.onkeydown = e => { if(e.key === 'Enter') ir(e); }; });
   $$('[data-dup]', v).forEach(b => b.onclick = () => { const x = lista.find(y => y.id === b.dataset.dup); if(x){ P = JSON.parse(JSON.stringify(x)); delete P._driveId; delete P._dirty; delete P._mod; P.id = 'p' + Date.now(); P.numero = nuevoNumero(); P.fecha = isoHoy(); guardarActual(); render(); msg('Copia lista como N° ' + P.numero + '. Ajustá cliente y montos.'); } });
   $$('[data-borrar]', v).forEach(b => b.onclick = () => {
     if(b.dataset.ok !== '1'){ b.dataset.ok = '1'; b.textContent = '¿Borrar?'; setTimeout(() => { if(b.isConnected){ b.dataset.ok = ''; b.textContent = '✕'; } }, 3000); return; }
@@ -515,9 +528,8 @@ const horaCorta = t => { const d = new Date(t); return p2(d.getHours()) + ':' + 
 function nubeHTML(){
   if(!N || !N.email) return '';
   const ult = store.get('bae.drive.ult', 0);
-  const txt = sinc.txt || (ult ? 'Al día · última sincronización ' + (new Date(ult).toDateString() === new Date().toDateString() ? 'hoy ' + horaCorta(ult) : fmtD(new Date(ult).toISOString().slice(0, 10))) : 'Todavía no se sincronizó.');
-  return `<div class="pz-nube${sinc.err ? ' err' : ''}"><div><b>☁ Google Drive</b><span id="pzNubeTxt">${esc(txt)}</span><span class="cta">${esc(N.email)} · <a href="#" id="pzSalir">cerrar sesión</a></span></div>
-    <button id="pzSync">Sincronizar</button></div>`;
+  const txt = sinc.txt || (ult ? 'Drive al día · ' + (new Date(ult).toDateString() === new Date().toDateString() ? 'hoy ' + horaCorta(ult) : fmtD(new Date(ult).toISOString().slice(0, 10))) : 'Todavía no se sincronizó.');
+  return `<div class="pz-nube${sinc.err ? ' err' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/></svg><span class="t" id="pzNubeTxt">${esc(txt)}</span><button id="pzSync" title="Sincronizar ahora" aria-label="Sincronizar ahora">↻</button></div>`;
 }
 function estado(t, err){ sinc = { txt: t, err: !!err }; const e = $('#pzNubeTxt', v); if(e){ e.textContent = t; e.closest('.pz-nube').classList.toggle('err', !!err); } }
 const nombreArchivo = x => ('Presupuesto_' + x.numero + '_' + (x.cliente || 'cliente')).replace(/[\\/:*?"<>|]+/g, '_');

@@ -43,6 +43,18 @@ css.textContent = `
   .tile .ic svg{width:30px;height:30px}
   .tile b{font-size:16px;line-height:1.2}
   .tile span{font-size:13px;color:var(--muted);line-height:1.35}
+  @media (max-width:899px){
+    .tiles .tile:last-child:nth-child(odd){grid-column:1 / -1;min-height:0;display:grid;grid-template-columns:52px 1fr;column-gap:14px;row-gap:2px;align-items:center}
+    .tiles .tile:last-child:nth-child(odd) .ic{grid-row:span 2}
+  }
+  #perfilCard summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--ink);font-weight:400;font-size:inherit;margin:0}
+  #perfilCard summary::-webkit-details-marker{display:none}
+  #perfilCard summary::after{content:'▾';color:var(--muted);transition:transform .2s}
+  #perfilCard details[open] summary::after{transform:rotate(180deg)}
+  .pf-sum{display:grid;gap:2px;min-width:0}
+  .pf-sum b{font-size:16px}
+  .pf-sum small{font-size:12.5px;color:var(--muted);font-weight:400;line-height:1.4}
+  .aviso-cal{margin:14px 0 0}
   .back{display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-weight:600;font-size:14px;text-decoration:none;color:var(--accent);background:var(--card);border:1px solid var(--line);border-radius:20px;padding:6px 14px}
   nav.tabs{display:none !important}
   .back[hidden]{display:none}
@@ -92,7 +104,7 @@ function placeBt(k){
   else if(k === 'informe'){ if(b.parentNode !== btHome.parent) btHome.parent.insertBefore(b, btHome.next); b.classList.remove('solo'); }
 }
 const VIEWS = {
-  inicio: { el: vHome, title: 'Herramientas de medición eléctrica', sub: 'Elegí qué querés hacer.' },
+  inicio: { el: vHome, title: 'Hola, Alexis 👋', sub: '¿Qué hacemos hoy?' },
   vivo: { el: vVivo, title: 'Multifunción CEM en vivo', sub: 'Mirá la pantalla del DT-6650 en el teléfono y capturala, sin armar un informe.' },
   informe: { el: vInf, title: 'Informe de mediciones CEM DT-6650', sub: 'Cargá los archivos .txt del equipo y obtené la imagen de cada pantalla y el informe en PDF.' },
   srt: { el: vSrt, title: 'Protocolo de PAT — Res. SRT 900/15', sub: 'Cargá las mediciones y descargá el formulario oficial completo.' },
@@ -163,8 +175,10 @@ vHome.innerHTML = `<nav class="tiles" aria-label="Funciones">
   <a class="tile" href="#pat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5v11"/><path d="M5 13.5h14"/><path d="M7.5 17h9"/><path d="M10 20.5h4"/></svg></div><b>Diseño de PAT</b><span>Resistividad Wenner y selección de la puesta a tierra.</span></a>
   <a class="tile" href="#presu"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></div><b>Presupuestos</b><span>Mano de obra, materiales y condiciones, en PDF.</span></a>
 </nav>
-<section class="card" id="perfilCard"><h2>Mis datos</h2>
-  <p class="hint" style="margin-top:0">Son fijos y salen iguales en informes, protocolo SRT y presupuestos.</p>
+${calDias() <= 0 ? `<p class="msg err aviso-cal">La calibración del DT-6650 está vencida desde ${esc(perfil.calVenceTexto)}. Cuando lo recalibres, avisá para actualizar la fecha en la app.</p>`
+  : calDias() <= 60 ? `<p class="msg err aviso-cal">La calibración del DT-6650 vence en ${calDias()} días (${esc(perfil.calVenceTexto)}). Programá la recalibración.</p>` : ''}
+<section class="card" id="perfilCard"><details><summary><span class="pf-sum"><b>Mis datos</b><small>${esc(perfil.nombre)} · Matrícula ${esc(perfil.matTec)} · Calibración hasta ${esc(perfil.calVenceTexto)}</small></span></summary>
+  <p class="hint" style="margin-top:10px">Son fijos y salen iguales en informes, protocolo SRT y presupuestos.</p>
   <div class="fijos">
     <div><span>Empresa</span><b>${esc(perfil.empresa)}</b></div>
     <div><span>Técnico responsable</span><b>${esc(perfil.nombre)} — ${esc(perfil.titulo)}</b></div>
@@ -175,10 +189,8 @@ vHome.innerHTML = `<nav class="tiles" aria-label="Funciones">
   </div>
   <h3 class="sub" style="margin-top:16px">Calibración del equipo</h3>
   <div class="fijos"><div><span>DT-6650</span><b>Última calibración: ${esc(perfil.calTexto)} · Vence: ${esc(perfil.calVenceTexto)}</b></div></div>
-  ${calDias() <= 0 ? `<p class="msg err">La calibración del DT-6650 está vencida desde ${esc(perfil.calVenceTexto)}. Cuando lo recalibres, avisá para actualizar la fecha en la app.</p>`
-    : calDias() <= 60 ? `<p class="msg err">La calibración del DT-6650 vence en ${calDias()} días (${esc(perfil.calVenceTexto)}). Programá la recalibración.</p>` : ''}
   <div class="msg" id="pfMsg"></div>
-</section>`;
+</details></section>`;
 $$('[data-uv]', vHome).forEach(el => { el.value = unaVez[el.dataset.uv] || '';
   el.addEventListener('input', () => { unaVez[el.dataset.uv] = el.value.trim(); perfil[el.dataset.uv] = el.value.trim(); const ok = store.set('bae.unavez', unaVez); syncInforme();
     setMsg('#pfMsg', ok ? 'Guardado.' : 'Este navegador no permite guardar: los datos se pierden al cerrar.', !ok); }); });

@@ -3,6 +3,8 @@
 'use strict';
 const CLIENT_ID = '1016468287608-ec3tv211ih3bicr7eb1sqj6okh947rqt.apps.googleusercontent.com';
 const DOMINIO = 'baeinstalaciones.com.ar';
+const API_KEY = 'AIzaSyCFrDSTSzB5qXqjJ8fILeTLTj3C4xjxraU';   // solo Google Picker, restringida a los sitios de la app
+const APP_ID = '1016468287608';                              // número del proyecto de Google Cloud
 const SCOPES = 'openid email https://www.googleapis.com/auth/drive.file';
 const CARPETA = 'BAE Presupuestos';
 const API = 'https://www.googleapis.com/drive/v3';
@@ -101,21 +103,30 @@ async function api(url, opt = {}, reintento){
   if(!tokenOk()) throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' });
   const r = await fetch(url, Object.assign({}, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok.t }, opt.headers || {}) }));
   if(r.status === 401){ tok = null; ss.del('bae.tok'); avisar(); throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' }); }
-  if(!r.ok){ if(!reintento && (r.status === 429 || r.status >= 500)){ await new Promise(x => setTimeout(x, 1500)); return api(url, opt, true); } throw new Error('Drive respondió ' + r.status); }
+  if(!r.ok){
+    if(!reintento && (r.status === 429 || r.status >= 500)){ await new Promise(x => setTimeout(x, 1500)); return api(url, opt, true); }
+    let det = ''; try{ const j = await r.json(); const e = j.error || {}; const razon = (e.errors && e.errors[0] && e.errors[0].reason) || (e.details && e.details[0] && e.details[0].reason) || e.status || '';
+      if(/accessNotConfigured|SERVICE_DISABLED/i.test(razon + ' ' + e.message)) det = 'la API de Google Drive no está habilitada en el proyecto de Google Cloud';
+      else if(/insufficient|PERMISSION_DENIED|scope/i.test(razon + ' ' + e.message)) det = 'falta el permiso de Drive: cerrá sesión y volvé a ingresar marcando el permiso de Drive';
+      else det = e.message || razon; }catch(x){}
+    throw new Error('Drive respondió ' + r.status + (det ? ' (' + det + ')' : ''));
+  }
   return r;
 }
-let carpetaId = ls.get('bae.drive.carpeta', null);
-async function carpeta(){
-  if(carpetaId) return carpetaId;
-  const q = encodeURIComponent(`mimeType='application/vnd.google-apps.folder' and name='${CARPETA}' and trashed=false`);
+const carpetas = ls.get('bae.drive.carpetas', {});
+{ const vieja = ls.get('bae.drive.carpeta', null); if(vieja && !carpetas[CARPETA]) carpetas[CARPETA] = vieja; }
+async function carpeta(nombre = CARPETA){
+  if(carpetas[nombre]) return carpetas[nombre];
+  const q = encodeURIComponent(`mimeType='application/vnd.google-apps.folder' and name='${nombre}' and trashed=false`);
   const r = await (await api(`${API}/files?q=${q}&fields=files(id)&spaces=drive`)).json();
-  if(r.files && r.files.length) carpetaId = r.files[0].id;
-  else carpetaId = (await (await api(`${API}/files?fields=id`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: CARPETA, mimeType: 'application/vnd.google-apps.folder' }) })).json()).id;
-  ls.set('bae.drive.carpeta', carpetaId); return carpetaId;
+  let id;
+  if(r.files && r.files.length) id = r.files[0].id;
+  else id = (await (await api(`${API}/files?fields=id`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: nombre, mimeType: 'application/vnd.google-apps.folder' }) })).json()).id;
+  carpetas[nombre] = id; ls.set('bae.drive.carpetas', carpetas); return id;
 }
-async function listar(tipo){
-  const c = await carpeta(); let out = [], page = '';
+async function listar(tipo, nombreCarpeta){
+  const c = await carpeta(nombreCarpeta); let out = [], page = '';
   do{
     const q = encodeURIComponent(`'${c}' in parents and trashed=false and appProperties has { key='bae' and value='${tipo}' }`);
     const r = await (await api(`${API}/files?q=${q}&pageSize=1000&fields=nextPageToken,files(id,name,appProperties)${page ? '&pageToken=' + page : ''}`)).json();
@@ -124,9 +135,9 @@ async function listar(tipo){
   return out;
 }
 async function bajar(id){ return (await api(`${API}/files/${id}?alt=media`)).json(); }
-async function subir({ id, name, mime, data, props }){
+async function subir({ id, name, mime, data, props, carpeta: nombreCarpeta }){
   const meta = { name, mimeType: mime, appProperties: props };
-  if(!id) meta.parents = [await carpeta()];
+  if(!id) meta.parents = [await carpeta(nombreCarpeta)];
   const b = 'bae' + Math.random().toString(36).slice(2);
   const body = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: ${mime}\r\n\r\n`, data, `\r\n--${b}--`]);
   const url = id ? `${UP}/files/${id}?uploadType=multipart&fields=id` : `${UP}/files?uploadType=multipart&fields=id`;
@@ -138,10 +149,75 @@ async function papelera(id){
   catch(e){ if(!/404/.test(e.message)) throw e; }
 }
 
+/* Sincroniza una lista de registros { id, _mod, _dirty, _driveId } con una carpeta de Drive.
+   o = { tipo, carpeta, lista(), setLista(arr), borrados(), setBorrados(arr), nombre(x) } → devuelve true si cambió algo */
+async function sincronizarColeccion(o){
+  let rem;
+  try{ rem = await listar(o.tipo, o.carpeta); }
+  catch(e){ if(/404/.test(e.message)){ delete carpetas[o.carpeta]; ls.set('bae.drive.carpetas', carpetas); rem = await listar(o.tipo, o.carpeta); } else throw e; }
+  let lista = o.lista().slice(), borr = o.borrados().slice(), cambio = false;
+  for(const id of borr.slice()){ await papelera(id); borr = borr.filter(x => x !== id); o.setBorrados(borr); }
+  rem = rem.filter(f => !borr.includes(f.id));
+  for(const f of rem){
+    const pid = f.appProperties && f.appProperties.id, mod = +(f.appProperties && f.appProperties.mod) || 0; if(!pid) continue;
+    const i = lista.findIndex(x => x.id === pid), loc = lista[i];
+    if(!loc || (!loc._dirty && (+loc._mod || 0) < mod)){
+      const d = await bajar(f.id); Object.assign(d, { id: pid, _driveId: f.id, _mod: mod, _dirty: false });
+      if(i >= 0) lista[i] = d; else lista.push(d); cambio = true;
+    } else if(!loc._driveId) loc._driveId = f.id;
+  }
+  const ids = new Set(rem.map(f => f.id)), antes = lista.length;
+  lista = lista.filter(x => !(x._driveId && !x._dirty && !ids.has(x._driveId)));
+  if(lista.length !== antes) cambio = true;
+  for(const x of lista.filter(y => y._dirty || !y._driveId)){
+    const limpio = Object.assign({}, x); delete limpio._dirty; delete limpio._driveId;
+    const otro = rem.find(f => f.appProperties && f.appProperties.id === x.id);
+    x._driveId = await subir({ id: x._driveId || (otro && otro.id), name: o.nombre(x) + '.json', mime: 'application/json', carpeta: o.carpeta,
+      data: JSON.stringify(limpio), props: { bae: o.tipo, id: x.id, mod: String(x._mod || Date.now()) } });
+    x._dirty = false; cambio = true;
+  }
+  o.setLista(lista);
+  return cambio;
+}
+
+/* ---------- selector de archivos de Drive (Google Picker) ---------- */
+let pickerPromesa = null;
+function cargarPicker(){
+  if(window.google && google.picker) return Promise.resolve();
+  if(pickerPromesa) return pickerPromesa;
+  pickerPromesa = new Promise((ok, mal) => {
+    const fin = () => gapi.load('picker', { callback: ok, onerror: () => { pickerPromesa = null; mal(new Error('no cargó el selector de Google')); } });
+    if(window.gapi && gapi.load) return fin();
+    const s = document.createElement('script'); s.src = 'https://apis.google.com/js/api.js'; s.async = true;
+    s.onload = fin; s.onerror = () => { pickerPromesa = null; mal(new Error('sin conexión con Google')); };
+    document.head.appendChild(s);
+  });
+  return pickerPromesa;
+}
+/* Abre el selector y devuelve [{ name, arrayBuffer() }] de los archivos elegidos. Llamar desde un toque del usuario. */
+function elegirArchivos({ mimes = 'text/plain', titulo = 'Elegí los archivos' } = {}){
+  const tokenP = pedirToken(false);            // primero, dentro del toque, para que no se bloquee la ventana
+  return Promise.all([tokenP, cargarPicker()]).then(([t]) => new Promise((ok, mal) => {
+    const P = google.picker;
+    const vista = new P.DocsView(P.ViewId.DOCS).setMimeTypes(mimes).setIncludeFolders(true).setSelectFolderEnabled(false).setMode(P.DocsViewMode.LIST);
+    const recientes = new P.DocsView(P.ViewId.RECENTLY_PICKED);
+    new P.PickerBuilder().setTitle(titulo).setLocale('es').addView(vista).addView(recientes)
+      .enableFeature(P.Feature.MULTISELECT_ENABLED).setOAuthToken(t).setDeveloperKey(API_KEY).setAppId(APP_ID)
+      .setCallback(d => {
+        const acc = d[P.Response.ACTION];
+        if(acc === P.Action.CANCEL) return ok([]);
+        if(acc !== P.Action.PICKED) return;
+        ok((d[P.Response.DOCUMENTS] || []).map(doc => ({ name: doc[P.Document.NAME], id: doc[P.Document.ID],
+          arrayBuffer: async () => (await api(`${API}/files/${doc[P.Document.ID]}?alt=media`)).arrayBuffer() })));
+      }).build().setVisible(true);
+  }));
+}
+
 window.__nube = {
   get email(){ return auth && auth.email; }, get conectado(){ return tokenOk(); },
   pedirToken, salir, carpeta, listar, bajar, subir, papelera, onCambio: f => oyentes.add(f),
-  olvidarCarpeta(){ carpetaId = null; ls.del('bae.drive.carpeta'); }
+  olvidarCarpeta(nombre = CARPETA){ delete carpetas[nombre]; ls.set('bae.drive.carpetas', carpetas); ls.del('bae.drive.carpeta'); },
+  sincronizarColeccion, elegirArchivos, precargarPicker: () => cargarPicker().catch(() => {})
 };
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pantallaIngreso); else pantallaIngreso();
 if(auth) cargarGsi().catch(() => {});
