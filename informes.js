@@ -390,7 +390,7 @@ mcss.textContent = `
   .bae-modal .pad{width:100%;aspect-ratio:5/2;background:#fff;border:1.5px dashed var(--line);border-radius:12px;touch-action:none}
   .bae-modal .bm-hint{margin:0;font-size:12.5px;color:var(--muted)}
   .bae-modal .mapa{width:100%;height:min(70vh,520px);border-radius:12px;overflow:hidden}
-  .pin-num{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#0b7a4b;color:#fff;font:700 13px system-ui;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+  .pin-num{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#0F2733;color:#fff;font:700 13px system-ui;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
   .pin-num.bad{background:#b42318}
   #infCierre .ci-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   #infCierre .firma-img{height:56px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:2px 8px}

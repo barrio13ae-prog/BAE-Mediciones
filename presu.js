@@ -419,7 +419,7 @@ async function pdf(envio){
   guardar(true); sincronizar(true); const idPdf = P.id;
   const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = 210, M = 15, CW = PW - 2*M, BOT = simple() ? 286 : 284; let y = 14;
-  const VERDE = [11,122,75], CLARO = [220,239,228], TXT = [25,30,28];
+  const VERDE = [15,39,51], CLARO = [228,236,240], TXT = [25,30,28];
   const pf = typeof window.__perfil === 'function' ? window.__perfil() : {};
   const need = h => { if(y + h > BOT){ doc.addPage(); y = 16; } };
   // texto con **negrita** y ajuste de línea

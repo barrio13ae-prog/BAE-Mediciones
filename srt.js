@@ -37,9 +37,9 @@ css.textContent = `
   .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
   @media (min-width:900px){.tiles{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}}
   .tile{display:flex;flex-direction:column;align-items:flex-start;gap:10px;text-decoration:none;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 16px;min-height:170px;transition:transform .12s, box-shadow .12s, border-color .12s}
-  .tile:hover,.tile:focus-visible{border-color:var(--accent);box-shadow:0 6px 18px rgba(11,122,75,.18);transform:translateY(-2px);outline:none}
+  .tile:hover,.tile:focus-visible{border-color:var(--accent);box-shadow:0 6px 18px rgba(15,39,51,.16);transform:translateY(-2px);outline:none}
   .tile:active{transform:scale(.98)}
-  .tile .ic{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:var(--accent);color:#fff}
+  .tile .ic{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink)}
   .tile .ic svg{width:30px;height:30px}
   .tile b{font-size:16px;line-height:1.2}
   .tile span{font-size:13px;color:var(--muted);line-height:1.35}
