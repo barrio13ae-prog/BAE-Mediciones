@@ -155,15 +155,16 @@
       <canvas id="liveCanvas"></canvas>
       <div class="live-side">
         <div class="live-status" id="liveStatus"></div>
-        <label class="inf-only">Ubicación / circuito<input id="liveUbic" placeholder="ej. Tomacorriente cocina"></label>
-        <label class="inf-only chk-gps"><input type="checkbox" id="liveGps"> Guardar la ubicación GPS con cada medición</label>
+        <label>Ubicación / circuito<input id="liveUbic" placeholder="ej. Tomacorriente cocina"></label>
+        <label class="chk-gps"><input type="checkbox" id="liveGps"> Guardar la ubicación GPS</label>
+        <div class="msg" id="liveMsg"></div>
         <div class="row" style="margin-top:10px">
-          <button class="primary inf-only" id="liveSave">Guardar medición</button>
+          <button class="primary" id="liveSave"><span class="inf-only">Guardar medición</span><span class="vivo-only">Guardar en el informe</span></button>
           <button id="liveShot">Capturar pantalla</button>
           <button id="liveReset" hidden>Reiniciar RCD automático</button>
         </div>
         <p class="note inf-only">Guardá cuando el equipo termine la prueba. La medición se suma a la lista y al informe.</p>
-        <p class="note vivo-only">"Capturar pantalla" guarda una imagen de lo que ves, con fecha y hora, para compartirla o archivarla.</p>
+        <p class="note vivo-only">"Guardar en el informe" suma la medición, con su ubicación, al informe que tenés abierto. "Capturar pantalla" guarda solo una imagen, con fecha, hora y ubicación.</p>
         <details style="margin-top:10px"><summary>Datos técnicos (diagnóstico)</summary>
           <pre id="liveRaw" style="white-space:pre-wrap;font-size:12px;background:var(--neutral-bg);padding:8px;border-radius:8px;margin:8px 0"></pre>
           <div class="row"><button id="rawCopy">Copiar datos</button><button id="rawMark">Marcar muestra</button><span class="note" id="rawMsg" style="margin:0"></span></div>
@@ -575,7 +576,8 @@ function drawScreen(m, canvas){
   // fondo y panel izquierdo
   c.fillStyle = '#6f97e6'; c.fillRect(0,0,W,H);
   c.fillStyle = '#5a85e0'; c.fillRect(0,0,W,16);
-  if(m.ts){ c.fillStyle = '#5a85e0'; c.fillRect(150,0,W-150,24); c.fillStyle = '#0d1b3a'; c.font = `700 17px ${F}`; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(m.ts, 160, 12); }
+  if(m.ts){ c.fillStyle = '#5a85e0'; c.fillRect(150,0,W-150,24); c.fillStyle = '#0d1b3a'; c.font = `700 17px ${F}`; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(m.ts, 160, 12);
+    const gc = gpsCoords(m.gps); if(gc){ c.font = `600 15px ${F}`; c.textAlign = 'right'; c.fillText('GPS ' + (+gc[0]).toFixed(5) + ', ' + (+gc[1]).toFixed(5), W - 10, 12); } }
   // área principal
   const mx = 150, my = m.ts ? 26 : 18, mw = W - mx - 6, mh = m.ts ? 368 : 376;
   const g = c.createLinearGradient(0,my,0,my+mh); g.addColorStop(0,'#1f3737'); g.addColorStop(1,'#3f5f5a');
@@ -861,6 +863,7 @@ $('#pdfBtn').onclick = async () => {
   y += 6;
 
   // tabla resumen
+  if(state.meas.length){
   doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Resumen de resultados', M, y); y += 5;
   const cols = [{h:'N°',w:9},{h:'Función',w:22},{h:'Ubicación / circuito',w:52},{h:'Valor medido',w:30},{h:'Secundario',w:26},{h:'Límite',w:20},{h:'Resultado',w:21}];
   const rowH = 7;
@@ -883,12 +886,13 @@ $('#pdfBtn').onclick = async () => {
     y += rowH;
   });
   y += 4;
+  }
   if(r.observaciones){ need(20); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20); doc.text('Observaciones', M, y+4); y += 9;
     doc.setFont('helvetica','normal'); doc.setFontSize(10); const lines = doc.splitTextToSize(pdfSafe(r.observaciones), PW-2*M); need(lines.length*5); doc.text(lines, M, y); y += lines.length*5 + 4; }
 
   // pantallas
-  if(state.meas.length){ doc.addPage(); y = M; }
-  doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Registro de pantallas del instrumento', M, y+4); y += 10;
+  if(state.meas.length){ doc.addPage(); y = M;
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Registro de pantallas del instrumento', M, y+4); y += 10; }
   const iw = 120, ih2 = iw * H / W;
   if(state.meas.length) for(let i=0;i<state.meas.length;i++){
     const m = state.meas[i];
@@ -914,7 +918,7 @@ $('#pdfBtn').onclick = async () => {
   const fotos = window.__dt.fotosParaPdf ? await window.__dt.fotosParaPdf() : [];
   if(fotos.length){
     setMsg('#dlMsg', 'Agregando imágenes…');
-    doc.addPage(); y = M;
+    y += 4; need(70);
     doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Imágenes y fotos', M, y+4); y += 10;
     const cw = (PW - 2*M - 6) / 2, maxH = 95; let col = 0, rowH = 0;
     for(let i=0;i<fotos.length;i++){
@@ -1035,14 +1039,17 @@ $('#rawCopy').onclick = async () => {
   try { await navigator.clipboard.writeText(txt); $('#rawMsg').textContent = 'Copiado. Pegalo en el chat.'; }
   catch(e){ $('#rawMsg').textContent = 'No se pudo copiar: seleccioná el texto de arriba y copialo a mano.'; }
 };
+function liveMsg(t, err){ const m = $('#liveMsg'); if(m){ m.textContent = t; m.classList.toggle('err', !!err); } }
 $('#liveShot').onclick = async () => {
-  if(!BT.last){ $('#liveStatus').textContent = 'Todavía no llegaron datos del equipo.'; return; }
-  const m = liveToMeas(BT.last), cv = document.createElement('canvas'); drawScreen(m, cv);
+  if(!BT.last){ liveMsg('Todavía no llegaron datos del equipo.', true); return; }
+  const m = liveToMeas(BT.last), cv = document.createElement('canvas');
+  if($('#liveGps').checked){ liveMsg('Buscando ubicación GPS…'); try { m.gps = await Promise.race([getGPS(), new Promise((_, r) => setTimeout(() => r({ code: 3 }), 12000))]); } catch(e){} }
+  drawScreen(m, cv);
   const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
   const t = new Date(), p = n => String(n).padStart(2, '0');
   const name = `CEM_${m.func.replace(/[^\w]+/g, '-')}_${t.getFullYear()}-${p(t.getMonth()+1)}-${p(t.getDate())}_${p(t.getHours())}-${p(t.getMinutes())}-${p(t.getSeconds())}.png`;
   const ok = await save(name, blob);
-  if(ok) $('#liveStatus').textContent = 'Captura guardada: ' + name;
+  if(ok) liveMsg('Captura guardada: ' + name);
 };
 $('#btConnect').onclick = () => btConnect(false);
 $('#btAll').onclick = () => btConnect(true);
@@ -1054,14 +1061,15 @@ $('#liveSave').onclick = () => {
   state.meas.push(m); state.files = state.files.includes('Bluetooth') ? state.files : state.files.concat('Bluetooth');
   if(!state.limits[m.func]) state.limits[m.func] = isRcd(m) ? { x1: '300', x5: '40', half: 'si' } : { lim: '', crit: defaultCrit(m.func) };
   setMsg('#loadMsg', `Medición guardada (${m.func}${m.ubic ? ' – ' + m.ubic : ''}).`);
+  liveMsg(`Medición guardada en el informe (${m.func}${m.ubic ? ' – ' + m.ubic : ''}).`);
   $('#liveUbic').value = ''; renderAll();
   if($('#liveGps').checked){
-    $('#liveStatus').textContent = 'Medición guardada. Buscando señal GPS…';
-    getGPS().then(g => { m.gps = g; renderAll(); $('#liveStatus').textContent = 'Medición guardada con ubicación GPS.'; })
-            .catch(e => { $('#liveStatus').textContent = 'Medición guardada sin GPS: ' + gpsErr(e); });
+    liveMsg('Medición guardada en el informe. Buscando ubicación GPS…');
+    getGPS().then(g => { m.gps = g; renderAll(); liveMsg('Medición guardada en el informe, con ubicación GPS. ✓'); })
+            .catch(e => { liveMsg('Medición guardada sin GPS: ' + gpsErr(e)); });
   }
 };
-try { $('#liveGps').checked = localStorage.getItem('bae.liveGps') === '1'; } catch(e){}
+try { $('#liveGps').checked = localStorage.getItem('bae.liveGps') !== '0'; } catch(e){ $('#liveGps').checked = true; }
 $('#liveGps').onchange = () => { try { localStorage.setItem('bae.liveGps', $('#liveGps').checked ? '1' : '0'); } catch(e){} };
 if(!btSupported()) { $('#btConnect').disabled = true; $('#btAll').hidden = true; btState('No disponible en este navegador.'); }
 
