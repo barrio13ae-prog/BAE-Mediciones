@@ -96,9 +96,10 @@ const simple = () => P.formato === 'simple';
 const rubro = () => P.rubro || 'elec';
 const guardarActual = () => store.set('bae.presu.actual', P);
 const totMOItems = () => P.mo.reduce((s, r) => s + num(r.cant) * num(r.precio), 0);
-// si hay precios por ítem se suman; si no, vale el total cargado a mano
-const totMO = () => totMOItems() > 0 ? totMOItems() : num(P.moTotal);
-const conPU = r => r.precio !== '' && r.precio != null && num(r.precio) > 0;
+// total cerrado a mano: si está cargado, manda (y en el PDF no se muestran precios por ítem); si no, se suman los ítems
+const cerrado = () => String(P.moTotal ?? '').trim() !== '' && num(P.moTotal) > 0;
+const totMO = () => cerrado() ? num(P.moTotal) : totMOItems();
+const conPU = r => !cerrado() && r.precio !== '' && r.precio != null && num(r.precio) > 0;
 const totMatItems = () => P.mat.reduce((s, r) => s + (r.precio !== '' && r.precio != null ? num(r.cant || 1) * num(r.precio) : 0), 0);
 const totMat = () => simple() ? 0 : String(P.matTotal).trim() !== '' ? num(P.matTotal) : totMatItems();
 const total = () => totMO() + totMat();
@@ -257,8 +258,8 @@ function render(){
       <div class="pz-list">${precios.map((x, i) => `<div class="pz-row pz-precio"><div class="info"><b style="font-weight:500;white-space:normal">${esc(x.desc)}</b><span>$ ${money(num(x.precio))}</span></div><div class="acts"><button data-pdel="${i}">✕</button></div></div>`).join('')}</div>
     </details>
     ${simple() ? `<label style="margin-top:12px">Texto de la fila de total<input data-p="totalTxt" value="${esc(P.totalTxt || 'Total mano de obra')}"></label>` : ''}
-    <label style="margin-top:12px">Total ${simple() ? 'final' : 'de mano de obra'} sin precios por ítem ($)<input data-p="moTotal" id="pzMoTotal" value="${esc(P.moTotal || '')}" inputmode="numeric" ${totMOItems() > 0 ? 'disabled' : ''} placeholder="${totMOItems() > 0 ? 'Se suma solo: ' + money(totMOItems()) : 'ej. 850000'}"></label>
-    <p class="pz-hint">Si cargás el precio de cada ítem, se suman solos. Si dejás los precios vacíos, poné acá el total cerrado.</p>
+    <label style="margin-top:12px">Total ${simple() ? 'final' : 'de mano de obra'} cerrado ($)<input data-p="moTotal" id="pzMoTotal" value="${esc(P.moTotal || '')}" inputmode="numeric" placeholder="${totMOItems() > 0 ? 'Suma de los ítems: ' + money(totMOItems()) : 'ej. 850000'}"></label>
+    <p class="pz-hint">Si lo dejás vacío, se suman los precios de cada ítem. Si ponés un total acá, ese es el que vale y en el PDF los ítems salen sin precio.</p>
     <div class="pz-tot"><span>Total ${simple() ? '' : 'mano de obra'}</span><span>$ ${money(totMO())}</span></div>
   </section>
 
@@ -331,7 +332,7 @@ function render(){
 function refreshTotals(){
   const t = $('#pzTotal', v); if(t) t.textContent = '$ ' + money(total());
   $$('.pz-tot', v).forEach((el, k) => el.lastElementChild.textContent = '$ ' + money(k === 0 ? totMO() : totMat()));
-  const mt = $('#pzMoTotal', v); if(mt){ const it = totMOItems(); mt.disabled = it > 0; mt.placeholder = it > 0 ? 'Se suma solo: ' + money(it) : 'ej. 850000'; }
+  const mt = $('#pzMoTotal', v); if(mt){ const it = totMOItems(); mt.placeholder = it > 0 ? 'Suma de los ítems: ' + money(it) : 'ej. 850000'; }
 }
 function bind(){
   $$('[data-p]', v).forEach(el => el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => {
