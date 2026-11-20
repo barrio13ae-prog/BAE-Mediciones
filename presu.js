@@ -95,7 +95,10 @@ if(!P.estado) P.estado = 'borrador'; if(!Array.isArray(P.cobros)) P.cobros = [];
 const simple = () => P.formato === 'simple';
 const rubro = () => P.rubro || 'elec';
 const guardarActual = () => store.set('bae.presu.actual', P);
-const totMO = () => P.mo.reduce((s, r) => s + num(r.cant) * num(r.precio), 0);
+const totMOItems = () => P.mo.reduce((s, r) => s + num(r.cant) * num(r.precio), 0);
+// si hay precios por ítem se suman; si no, vale el total cargado a mano
+const totMO = () => totMOItems() > 0 ? totMOItems() : num(P.moTotal);
+const conPU = r => r.precio !== '' && r.precio != null && num(r.precio) > 0;
 const totMatItems = () => P.mat.reduce((s, r) => s + (r.precio !== '' && r.precio != null ? num(r.cant || 1) * num(r.precio) : 0), 0);
 const totMat = () => simple() ? 0 : String(P.matTotal).trim() !== '' ? num(P.matTotal) : totMatItems();
 const total = () => totMO() + totMat();
@@ -254,6 +257,8 @@ function render(){
       <div class="pz-list">${precios.map((x, i) => `<div class="pz-row pz-precio"><div class="info"><b style="font-weight:500;white-space:normal">${esc(x.desc)}</b><span>$ ${money(num(x.precio))}</span></div><div class="acts"><button data-pdel="${i}">✕</button></div></div>`).join('')}</div>
     </details>
     ${simple() ? `<label style="margin-top:12px">Texto de la fila de total<input data-p="totalTxt" value="${esc(P.totalTxt || 'Total mano de obra')}"></label>` : ''}
+    <label style="margin-top:12px">Total ${simple() ? 'final' : 'de mano de obra'} sin precios por ítem ($)<input data-p="moTotal" id="pzMoTotal" value="${esc(P.moTotal || '')}" inputmode="numeric" ${totMOItems() > 0 ? 'disabled' : ''} placeholder="${totMOItems() > 0 ? 'Se suma solo: ' + money(totMOItems()) : 'ej. 850000'}"></label>
+    <p class="pz-hint">Si cargás el precio de cada ítem, se suman solos. Si dejás los precios vacíos, poné acá el total cerrado.</p>
     <div class="pz-tot"><span>Total ${simple() ? '' : 'mano de obra'}</span><span>$ ${money(totMO())}</span></div>
   </section>
 
@@ -326,6 +331,7 @@ function render(){
 function refreshTotals(){
   const t = $('#pzTotal', v); if(t) t.textContent = '$ ' + money(total());
   $$('.pz-tot', v).forEach((el, k) => el.lastElementChild.textContent = '$ ' + money(k === 0 ? totMO() : totMat()));
+  const mt = $('#pzMoTotal', v); if(mt){ const it = totMOItems(); mt.disabled = it > 0; mt.placeholder = it > 0 ? 'Se suma solo: ' + money(it) : 'ej. 850000'; }
 }
 function bind(){
   $$('[data-p]', v).forEach(el => el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => {
@@ -513,7 +519,7 @@ async function pdf(envio){
     const mo = P.mo.filter(r => String(r.desc).trim() || num(r.precio));
     barra('Detalle de servicios / productos', 30, true);
     tabla([{h:'ÍTEM',w:11,al:'c'},{h:'DESCRIPCIÓN',w:CW-11-27-20-31},{h:'P. UNITARIO',w:27,al:'r'},{h:'CANTIDAD',w:20,al:'c'},{h:'SUBTOTAL',w:31,al:'r'}],
-      mo.map((r, i) => [(i + 1) + '.', r.desc, pesos(num(r.precio)), String(r.cant), pesos(num(r.cant) * num(r.precio))]), [String(P.totalTxt || 'Total').toUpperCase(), pesos(T)], { fs: 8.2, lh: 3.3, pad: 1.9, top: 3.6 });
+      mo.map((r, i) => [(i + 1) + '.', r.desc, conPU(r) ? pesos(num(r.precio)) : '-', String(r.cant), conPU(r) ? pesos(num(r.cant) * num(r.precio)) : '-']), [String(P.totalTxt || 'Total').toUpperCase(), pesos(T)], { fs: 8.2, lh: 3.3, pad: 1.9, top: 3.6 });
     if(String(P.alcance).trim()){ barra('Alcance técnico y normativa', 20); bloque(P.alcance); }
     const conds = String(P.condiciones || '').split('\n').map(x => x.trim()).filter(Boolean).map(x => x.replace(/^[-•]\s*/, ''));
     if(ant) conds.push(`Anticipo del ${ant}% al aceptar el presupuesto: ${pesos(T * ant / 100)}.`);
@@ -529,7 +535,7 @@ async function pdf(envio){
   if(mo.length){
     barra('Mano de obra'); bloque(`La mano de obra cotizada suma **$${money(tMO)}**.`);
     tabla([{h:'Descripción',w:CW-14-34-34},{h:'Cant.',w:14,al:'c'},{h:'Precio c/u (AR$)',w:34,al:'r'},{h:'Subtotal (AR$)',w:34,al:'r'}],
-      mo.map(r => [r.desc, String(r.cant), money(num(r.precio)), money(num(r.cant) * num(r.precio))]), ['TOTAL MANO DE OBRA', money(tMO)]);
+      mo.map(r => [r.desc, String(r.cant), conPU(r) ? money(num(r.precio)) : '-', conPU(r) ? money(num(r.cant) * num(r.precio)) : '-']), ['TOTAL MANO DE OBRA', money(tMO)]);
   }
   const mat = P.mat.filter(r => String(r.desc).trim());
   if(P.matIncluidos && (mat.length || tMat)){
