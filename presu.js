@@ -686,7 +686,7 @@ if(N){
     if(e.target.id === 'pzSalir'){ e.preventDefault(); N.salir(); location.reload(); }
   });
 }
-window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = x; render(); }, pdf, get lista(){ return lista; }, cobrado, waLink,
+window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = x; guardarActual(); render(); }, get precios(){ return precios; }, pdf, get lista(){ return lista; }, cobrado, waLink,
   nuevoPara(c){ P = nuevo(); P.cliente = c.nombre || ''; P.telCliente = c.telefono || ''; P.direccion = [c.direccion, c.localidad].filter(Boolean).join(', '); guardarActual(); render(); } };
 render();
 APP.route();

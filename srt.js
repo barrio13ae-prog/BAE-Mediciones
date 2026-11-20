@@ -148,7 +148,7 @@ function syncInforme(){
 const LOGO = (window.BAE_LOGO ? window.BAE_LOGO.mark.replace('<svg ', '<svg width="44" height="44" aria-hidden="true" ') : '');
 header.innerHTML = `<div class="brand">${LOGO}<div><div class="bname" id="bName"></div><div class="bcred" id="bCred"></div></div></div>
   <h1 id="appTitle"></h1><p id="appSub"></p>
-  <nav class="tabs"><a href="#inicio" data-v="inicio">Inicio</a><a href="#vivo" data-v="vivo">Ver multifunción CEM</a><a href="#informe" data-v="informe">Informe DT-6650</a><a href="#srt" data-v="srt">Protocolo SRT 900/15</a><a href="#pat" data-v="pat">Diseño de PAT</a></nav>
+  <nav class="tabs"><a href="#inicio" data-v="inicio">Inicio</a><a href="#vivo" data-v="vivo">Ver multifunción CEM</a><a href="#informe" data-v="informe">Informe DT-6650</a><a href="#srt" data-v="srt">Protocolo SRT 900/15</a><a href="#pat" data-v="pat">Diseño de PAT</a><a href="#gas" data-v="gas">Gas NAG-200</a></nav>
   <a class="back" id="backHome" href="#inicio">← Inicio</a>`;
 function renderBrand(){ $('#bName').textContent = perfil.empresa || 'BAE Servicios de Instalaciones'; $('#bCred').textContent = [perfil.nombre, ...credenciales()].filter(Boolean).join(' · '); }
 renderBrand(); syncInforme();
@@ -159,6 +159,7 @@ function route(){
   placeBt(k);
   const bk = document.getElementById('backHome'); if(bk) bk.hidden = k === 'inicio';
   $('#appTitle').textContent = VIEWS[k].title; $('#appSub').textContent = VIEWS[k].sub;
+  $('#bCred').textContent = [perfil.nombre, ...(k === 'gas' ? [perfil.tituloGas + ' · Matrícula: ' + perfil.matGas] : credenciales())].filter(Boolean).join(' · ');
   $$('nav.tabs a').forEach(a => a.classList.toggle('on', a.dataset.v === k));
   document.title = VIEWS[k].title;
   if(k === 'srt') renderSrtAll();
@@ -175,6 +176,7 @@ vHome.innerHTML = `<nav class="tiles" aria-label="Funciones">
   <a class="tile" href="#pat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5v11"/><path d="M5 13.5h14"/><path d="M7.5 17h9"/><path d="M10 20.5h4"/></svg></div><b>Diseño de PAT</b><span>Resistividad Wenner y selección de la puesta a tierra.</span></a>
   <a class="tile" href="#presu"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></div><b>Presupuestos</b><span>Mano de obra, materiales y condiciones, en PDF.</span></a>
   <a class="tile" href="#clientes"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg></div><b>Clientes</b><span>Agenda, contactos y vencimientos de protocolos.</span></a>
+  <a class="tile" href="#gas"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5c-3 4-6.5 7-6.5 11.5a6.5 6.5 0 0 0 13 0c0-3-1.8-5.2-3-7.2-.4 2-1.6 3.2-3.2 3.4 1.2-3 1.2-5.2-.3-7.7z"/></svg></div><b>Gas NAG-200</b><span>Cálculo de cañerías, isométrica, ventilaciones y memoria técnica.</span></a>
   <a class="tile" href="#calc"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 6.5h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h.01M12 18h3.5"/></svg></div><b>Calculadoras</b><span>Cables, protecciones y grado de electrificación.</span></a>
   <a class="tile" href="#resumen"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div><b>Resumen</b><span>Presupuestado, cobrado y trabajos del mes.</span></a>
 </nav>

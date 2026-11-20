@@ -156,7 +156,7 @@ function editorHTML(c){
     <div class="cl-acts">
       ${c.telefono ? `<a class="wa" href="${waLink(c.telefono, 'Hola ' + String(c.nombre || '').trim() + ', ¿cómo estás?')}" target="_blank" rel="noopener">WhatsApp</a><a href="tel:${esc(String(c.telefono).replace(/[^\d+]/g, ''))}">Llamar</a>` : ''}
       ${st.v && st.cls !== 'ok' && c.telefono ? `<a class="wa" href="${waLink(c.telefono, textoSrt(c))}" target="_blank" rel="noopener">Ofrecer renovación SRT</a>` : ''}
-      <button id="clPresu">+ Presupuesto</button><button id="clInf">+ Informe</button><button id="clSrt">+ Protocolo SRT</button>
+      <button id="clPresu">+ Presupuesto</button><button id="clInf">+ Informe</button><button id="clSrt">+ Protocolo SRT</button><button id="clGas">+ Proyecto de gas</button>
     </div>
     ${h ? `<h3 class="sub" style="margin:16px 0 4px">Historial</h3><div class="cl-hist">${h}</div>` : ''}
     <div class="row" style="margin-top:16px"><button class="primary" id="clGuardar">Guardar</button>${lista.some(x => x.id === c.id) ? '<button id="clBorrar">Borrar cliente</button>' : ''}</div>
@@ -193,6 +193,7 @@ function bindEditor(){
   $('#clPresu', vCli).onclick = ir(c => window.__presu && window.__presu.nuevoPara(c), '#presu');
   $('#clInf', vCli).onclick = ir(c => window.__informes && window.__informes.nuevoPara(c), '#informe');
   $('#clSrt', vCli).onclick = ir(c => window.__srt && window.__srt.cargarCliente(c), '#srt');
+  { const g = $('#clGas', vCli); if(g) g.onclick = ir(c => window.__gas && window.__gas.nuevoPara(c), '#gas'); }
   $$('[data-hp]', vCli).forEach(a => a.onclick = e => { e.preventDefault(); const x = (window.__presu.lista || []).find(y => y.id === a.dataset.hp); if(x){ window.__presu.P = JSON.parse(JSON.stringify(x)); location.hash = '#presu'; } });
   $$('[data-hi]', vCli).forEach(a => a.onclick = e => { e.preventDefault(); const r = document.querySelector(`#infGuardados [data-iabrir="${a.dataset.hi}"] .info`); location.hash = '#informe'; setTimeout(() => { const r2 = document.querySelector(`#infGuardados [data-iabrir="${a.dataset.hi}"] .info`); if(r2) r2.click(); }, 80); });
 }
