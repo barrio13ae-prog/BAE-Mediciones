@@ -143,7 +143,7 @@ function syncInforme(){
   set('eqNombre', perfil.eqNombre); set('eqModelo', perfil.eqModelo); set('serie', perfil.serie); set('calibracion', perfil.calibracion + ' (vence ' + perfil.calVence + ')');
   const fx = document.getElementById('infFijos');
   if(fx) fx.innerHTML = `<div><span>Técnico responsable</span><b>${esc(perfil.nombre)} — ${esc(perfil.titulo)} · Matrícula: ${esc(perfil.matTec)}</b></div>
-    <div><span>Equipo de medición</span><b>${esc(perfil.eqNombre)} ${esc(perfil.eqModelo)} · N° de serie ${esc(perfil.serie)}${' · Última calibración: ' + esc(perfil.calTexto) + ' (vence ' + esc(perfil.calVenceTexto) + ')'}</b></div>`;
+`;
 }
 const LOGO = (window.BAE_LOGO ? window.BAE_LOGO.mark.replace('<svg ', '<svg width="44" height="44" aria-hidden="true" ') : '');
 header.innerHTML = `<div class="brand">${LOGO}<div><div class="bname" id="bName"></div><div class="bcred" id="bCred"></div></div></div>

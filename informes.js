@@ -14,6 +14,7 @@ const fmtD = iso => { const p = String(iso || '').split('-'); return p.length ==
 const sinAcentos = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const CLIENTE = ['tipo', 'empresa', 'cuit', 'obra', 'direccion', 'observaciones'];
 const CARPETA = 'BAE Informes';
+var insListo = false;   // el módulo de instrumentos se arma más abajo
 
 let lista = store.get('bae.inf.lista', []);
 let borrados = store.get('bae.inf.borrados', []);
@@ -27,9 +28,11 @@ function ponerReporte(rep){
     el.value = rep[k] || (k === 'fecha' ? hoyLocal() : '');
     S.report[k] = el.value;
   });
+  S.report.instr = Array.isArray(rep.instr) ? rep.instr.map(x => Object.assign({}, x)) : null;   // null = solo el DT-6650
+  if(insListo) renderInstr();
 }
 if(!Array.isArray(S.fotos)) S.fotos = [];
-const foto = () => ({ report: Object.fromEntries(CLIENTE.concat('fecha').map(k => [k, S.report[k] || ''])), meas: S.meas, files: S.files, fotos: S.fotos, firmaCliente: S.firmaCliente || null });
+const foto = () => ({ report: Object.assign(Object.fromEntries(CLIENTE.concat('fecha').map(k => [k, S.report[k] || ''])), { instr: S.report.instr || null }), meas: S.meas, files: S.files, fotos: S.fotos, firmaCliente: S.firmaCliente || null });
 const vacio = () => !S.meas.length && !S.fotos.length && !CLIENTE.some(k => String(S.report[k] || '').trim());
 const titulo = x => [x.report && x.report.empresa || 'Sin cliente', x.report && x.report.obra].filter(Boolean).join(' · ');
 
@@ -498,11 +501,83 @@ function nuevoPara(c){
 
 /* el PDF del informe también lo guarda */
 document.addEventListener('click', e => { if(e.target && e.target.id === 'pdfBtn' && !vacio()){ guardarBorrador(); if(guardar()){ render(); sincronizar(true); } } }, true);
+/* ---------- instrumentos utilizados ---------- */
+const TIPOS_INS = ['Pinza amperométrica', 'Pinza de fugas', 'Telurímetro', 'Megóhmetro', 'Multímetro', 'Detector de tensión', 'Secuencímetro', 'Termómetro infrarrojo', 'Cámara termográfica', 'Analizador de redes', 'Luxómetro', 'Manómetro', 'Detector de fugas de gas'];
+let instrs = store.get('bae.instr.lista', []), instrBorr = store.get('bae.instr.borrados', []);
+const guardarInstrs = () => store.set('bae.instr.lista', instrs);
+const dtIns = () => { const p = window.__perfil ? window.__perfil() : {}; return { id: 'dt6650', nombre: [p.eqNombre, p.eqModelo].filter(Boolean).join(' ') || 'CEM DT-6650', serie: p.serie || '', cal: p.calibracion ? p.calibracion + (p.calVence ? ' (vence ' + p.calVence + ')' : '') : '' }; };
+const catalogo = () => [dtIns(), ...instrs.filter(x => !x._del)];
+const seleccion = () => Array.isArray(S.report.instr) ? S.report.instr : [dtIns()];
+const detalleIns = x => [x.serie ? 'N° de serie ' + x.serie : '', x.cal ? 'Calibración: ' + x.cal : ''].filter(Boolean).join(' · ');
+DT.instrumentos = () => seleccion();
+const boxIns = document.createElement('div'); boxIns.id = 'infInstr';
+{ const fx = document.getElementById('infFijos'); if(fx) fx.after(boxIns); }
+const cssIns = document.createElement('style');
+cssIns.textContent = `#infInstr{margin-top:14px}#infInstr h3{margin:0 0 8px;font-size:14px}
+  #infInstr .ins{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+  #infInstr .ins.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
+  #infInstr .ins input[type=checkbox]{width:20px;height:20px;margin:0;flex:none}
+  #infInstr .ins .t{flex:1;min-width:0;display:grid;gap:2px}#infInstr .ins .t span{font-size:12.5px;color:var(--muted)}
+  #infInstr .ins button{flex:none;padding:6px 10px;font-size:13px}
+  #infInstr .insf{border:1px dashed var(--line);border-radius:12px;padding:12px;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  #infInstr .insf .row{grid-column:1/-1;margin:0}`;
+document.head.appendChild(cssIns);
+let editIns = null;   // id en edición, 'nuevo' o null
+function renderInstr(){
+  const sel = new Set(seleccion().map(x => x.id));
+  const fila = x => `<label class="ins${sel.has(x.id) ? ' on' : ''}"><input type="checkbox" data-ins="${esc(x.id)}" ${sel.has(x.id) ? 'checked' : ''}>
+    <span class="t"><b>${esc(x.nombre)}</b><span>${esc(detalleIns(x) || 'Sin datos de serie ni calibración')}</span></span>
+    ${x.id === 'dt6650' ? '' : `<button type="button" class="link" data-insed="${esc(x.id)}">Editar</button>`}</label>`;
+  const ed = editIns ? (editIns === 'nuevo' ? {} : instrs.find(x => x.id === editIns) || {}) : null;
+  boxIns.innerHTML = `<h3>Instrumentos utilizados <span style="font-weight:400;color:var(--muted);font-size:12.5px">· tildá los que salen en el informe</span></h3>
+    ${catalogo().map(fila).join('')}
+    ${ed ? `<div class="insf"><label>Instrumento<input id="insNom" list="dlTiposIns" value="${esc(ed.nombre || '')}" placeholder="ej. Pinza amperométrica UNI-T UT204+"></label>
+      <label>N° de serie<input id="insSer" value="${esc(ed.serie || '')}"></label>
+      <label>Calibración<input id="insCal" value="${esc(ed.cal || '')}" placeholder="ej. 03/2026 (vence 03/2027)"></label>
+      <div class="row"><button type="button" class="primary" id="insOk">Guardar instrumento</button><button type="button" id="insNo">Cancelar</button>${editIns !== 'nuevo' ? '<button type="button" class="link" id="insDel">Borrar de la lista</button>' : ''}</div>
+      <datalist id="dlTiposIns">${TIPOS_INS.map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>`
+      : '<button type="button" id="insAdd">+ Agregar instrumento</button>'}`;
+}
+boxIns.addEventListener('change', e => { const c = e.target.closest('[data-ins]'); if(!c) return;
+  const cur = seleccion().filter(x => x.id !== c.dataset.ins);
+  if(c.checked){ const x = catalogo().find(y => y.id === c.dataset.ins); if(x) cur.push({ id: x.id, nombre: x.nombre, serie: x.serie || '', cal: x.cal || '' }); }
+  const orden = catalogo().map(x => x.id); cur.sort((a, b) => orden.indexOf(a.id) - orden.indexOf(b.id));
+  S.report.instr = cur; guardarBorrador(); renderInstr(); });
+boxIns.addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return; e.preventDefault();
+  if(b.id === 'insAdd'){ editIns = 'nuevo'; renderInstr(); $('#insNom', boxIns).focus(); }
+  else if(b.id === 'insNo'){ editIns = null; renderInstr(); }
+  else if(b.dataset.insed){ editIns = b.dataset.insed; renderInstr(); }
+  else if(b.id === 'insOk'){
+    const nombre = $('#insNom', boxIns).value.trim(); if(!nombre){ $('#insNom', boxIns).focus(); return; }
+    const datos = { nombre, serie: $('#insSer', boxIns).value.trim(), cal: $('#insCal', boxIns).value.trim() };
+    let x; if(editIns === 'nuevo'){ x = Object.assign({ id: 'ins' + Date.now() }, datos); instrs.push(x); }
+    else { x = instrs.find(y => y.id === editIns); Object.assign(x, datos); }
+    x._mod = Date.now(); x._dirty = true; guardarInstrs();
+    // queda tildado en el informe actual, con los datos al día
+    S.report.instr = seleccion().filter(y => y.id !== x.id).concat({ id: x.id, nombre: x.nombre, serie: x.serie, cal: x.cal }); guardarBorrador();
+    editIns = null; renderInstr(); sincronizarIns();
+  }
+  else if(b.id === 'insDel'){
+    const x = instrs.find(y => y.id === editIns); if(!x || !confirm('¿Borrar "' + x.nombre + '" de tu lista de instrumentos?')) return;
+    if(x._driveId){ instrBorr.push(x._driveId); store.set('bae.instr.borrados', instrBorr); }
+    instrs = instrs.filter(y => y.id !== x.id); guardarInstrs(); editIns = null; renderInstr(); sincronizarIns();
+  }
+});
+let insCorr = null;
+async function sincronizarIns(){
+  if(!N || !N.email || !N.conectado || insCorr) return;
+  insCorr = N.sincronizarColeccion({ tipo: 'ins', carpeta: CARPETA, lista: () => instrs, setLista: l => { instrs = l; guardarInstrs(); },
+    borrados: () => instrBorr, setBorrados: b => { instrBorr = b; store.set('bae.instr.borrados', instrBorr); },
+    nombre: x => ('Instrumento_' + x.nombre).replace(/[\\/:*?"<>|]+/g, '_') }).then(() => renderInstr()).catch(() => {}).finally(() => { insCorr = null; });
+}
+insListo = true; renderInstr();
+
 // borrador vacío de otro día: arranca con la fecha de hoy
 function fechaHoy(){ const hoy = hoyLocal(), el = document.querySelector('#reportForm [data-k="fecha"]');
   if(el && vacio() && S.report.fecha !== hoy){ el.value = hoy; S.report.fecha = hoy; guardarBorrador(); } }
 fechaHoy();
-window.addEventListener('hashchange', () => { if(location.hash === '#informe'){ fechaHoy(); render(); sincronizar(false); } });
+window.addEventListener('hashchange', () => { if(location.hash === '#informe'){ fechaHoy(); render(); sincronizar(false); sincronizarIns(); } });
 window.addEventListener('online', () => sincronizar(false));
 if(N) N.onCambio(() => { if(location.hash === '#informe') render(); });
 

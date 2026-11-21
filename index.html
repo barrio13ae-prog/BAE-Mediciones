@@ -836,7 +836,7 @@ $('#pdfBtn').onclick = async () => {
   const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit:'mm', format:'a4' });
   const r = state.report, PW = 210, M = 15; let y = M;
   const blue = [15,39,51];
-  const footer = () => { const n = doc.getNumberOfPages(); for(let p=1;p<=n;p++){ doc.setPage(p); doc.setFontSize(8); doc.setTextColor(120); doc.text(pdfSafe([r.tecnico ? r.tecnico + (r.matricula ? ' (Matrícula: ' + r.matricula + ')' : '') : '', [r.eqModelo, r.serie ? 'N° ' + r.serie : ''].filter(Boolean).join(' ')].filter(Boolean).join('  ·  ')), M, 290); doc.text(`Página ${p} de ${n}`, PW-M, 290, {align:'right'}); } };
+  const footer = () => { const n = doc.getNumberOfPages(); for(let p=1;p<=n;p++){ doc.setPage(p); doc.setFontSize(8); doc.setTextColor(120); doc.text(pdfSafe([r.tecnico ? r.tecnico + (r.matricula ? ' (Matrícula: ' + r.matricula + ')' : '') : '', ((window.__dt.instrumentos ? window.__dt.instrumentos() : []).some(x => x.id === 'dt6650') ? [r.eqModelo, r.serie ? 'N° ' + r.serie : ''].filter(Boolean).join(' ') : '')].filter(Boolean).join('  ·  ')), M, 290); doc.text(`Página ${p} de ${n}`, PW-M, 290, {align:'right'}); } };
   const need = h => { if(y + h > 280){ doc.addPage(); y = M; } };
 
   doc.setFillColor(...blue); doc.rect(0,0,PW,3,'F'); [[255,197,49],[255,122,26],[31,162,224]].forEach((c,i) => { doc.setFillColor(...c); doc.rect(i*PW/3,3,PW/3,1.2,'F'); });
@@ -848,13 +848,15 @@ $('#pdfBtn').onclick = async () => {
     if(pf.contacto){ doc.setFontSize(8.5); doc.text(pdfSafe(pf.contacto), PW-M, y+4.6, { align:'right' }); }
     y += 15; doc.setDrawColor(225); doc.line(M, y, PW-M, y); y += 2;
   }
-  doc.setTextColor(20); doc.setFont('helvetica','bold'); doc.setFontSize(17);
-  doc.text(pdfSafe(String(r.tipo || '').trim() || 'Informe de mediciones eléctricas'), M, y + 8); y += 13;
+  doc.setTextColor(20); doc.setFont('helvetica','bold');
+  { const tit = pdfSafe(String(r.tipo || '').trim() || 'Informe de mediciones eléctricas');
+    let fs = 17, ls; for(;;){ doc.setFontSize(fs); ls = doc.splitTextToSize(tit, PW - 2*M); if(ls.length <= 1 || fs <= 13) break; fs -= 1; }
+    const lh = fs * 0.42; doc.text(ls, M, y + 8, { lineHeightFactor: 1.15 }); y += 13 + (ls.length - 1) * lh * 1.15; }
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90);
   y += 2;
   const info = [['Cliente / empresa', r.empresa],[/^\d{7,8}$/.test(String(r.cuit || '').replace(/\D/g, '')) ? 'DNI' : 'CUIT', r.cuit],['Obra / instalación', r.obra],['Dirección', r.direccion],['Fecha de medición', fmtDate(r.fecha)],
                 ['Técnico responsable', (r.tecnico || '') + (r.matricula ? (r.tecnico ? '  ·  ' : '') + 'Matrícula: ' + r.matricula : '')],
-                ['Equipo de medición', [r.eqNombre, r.eqModelo].filter(Boolean).join(' ')],['N° de serie', r.serie],['Última calibración', r.calibracion]].filter(x => x[1]);
+                ...(window.__dt.instrumentos ? window.__dt.instrumentos() : []).map((x, k, a) => [k === 0 ? (a.length > 1 ? 'Instrumentos' : 'Instrumento') : '', [x.nombre, x.serie ? 'N° ' + x.serie : '', x.cal ? 'Cal. ' + x.cal : ''].filter(Boolean).join(' · ')])].filter(x => x[1]);
   doc.setDrawColor(225); doc.setFillColor(246,247,249);
   const ih = info.length * 6 + 6; doc.roundedRect(M, y, PW-2*M, ih, 2, 2, 'F'); y += 7;
   doc.setFontSize(10);
@@ -1156,10 +1158,10 @@ window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles, 
 </script>
 <script src="logo.js?v=2"></script>
 <script src="nube.js?v=7"></script>
-<script src="srt.js?v=19"></script>
+<script src="srt.js?v=20"></script>
 <script src="precios-ref.js?v=1"></script>
 <script src="presu.js?v=17"></script>
-<script src="informes.js?v=8"></script>
+<script src="informes.js?v=9"></script>
 <script src="clientes.js?v=3"></script>
 <script src="calc.js?v=1"></script>
 <script src="gas.js?v=3"></script>
