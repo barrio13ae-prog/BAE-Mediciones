@@ -253,7 +253,7 @@ const vRes = document.createElement('div'); vRes.className = 'view'; vRes.id = '
 APP.VIEWS.resumen = { el: vRes, title: 'Resumen', sub: 'Cómo viene el mes: presupuestos, ingresos y trabajos.' };
 let mesSel = hoyISO().slice(0, 7);
 const enMes = (iso, m) => String(iso || '').slice(0, 7) === m;
-const ACEPT = ['aceptado', 'obra', 'cobrado'];
+const ACEPT = ['aceptado', 'obra', 'terminado', 'cobrado'];
 
 /* ---------- ingresos sin presupuesto (emergencias, trabajos sueltos) ---------- */
 const RUBROS = [['elec', 'Electricidad'], ['gas', 'Gas'], ['agua', 'Agua / sanitarios'], ['otro', 'Otros (techos, pintura…)']];

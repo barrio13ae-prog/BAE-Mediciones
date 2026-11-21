@@ -80,13 +80,13 @@ function nuevo(){
     mo: [{ desc: '', cant: 1, precio: '' }], mat: [], matTotal: '', matIncluidos: true,
     condiciones: COND_SIMPLE, estado: 'borrador', hitos: {}, cobros: [] };
 }
-const ESTADOS = [['borrador','Borrador'],['enviado','Enviado'],['aceptado','Aceptado'],['obra','En obra'],['cobrado','Cobrado'],['rechazado','Rechazado']];
+const ESTADOS = [['borrador','Borrador'],['enviado','Enviado'],['aceptado','Aceptado'],['obra','En obra'],['terminado','Terminado'],['cobrado','Cobrado'],['rechazado','Rechazado']];
 const estadoTxt = e => (ESTADOS.find(x => x[0] === (e || 'borrador')) || ESTADOS[0])[1];
 const cobrado = x => (x.cobros || []).reduce((a, c) => a + num(c.monto), 0);
 /* Seguimiento por etapas: cada presupuesto guarda en "hitos" la fecha de cada etapa que atravesó.
    "estado" queda como la etapa más avanzada (lo usan la lista, el resumen y los clientes). */
-const ETAPAS = ['enviado', 'aceptado', 'obra', 'cobrado'];
-const ACEPTADO = ['aceptado', 'obra', 'cobrado'];
+const ETAPAS = ['enviado', 'aceptado', 'obra', 'terminado', 'cobrado'];
+const ACEPTADO = ['aceptado', 'obra', 'terminado', 'cobrado'];
 function normHitos(x){
   if(!x.hitos || typeof x.hitos !== 'object'){
     // presupuestos anteriores: se reconstruyen las etapas a partir del estado que tenían
@@ -194,7 +194,7 @@ css.textContent = `
   .pz-etapa input[type=date]{width:auto;margin:0;padding:6px 8px;font-size:13.5px}
   .pz-etapa.on{background:var(--neutral-bg)}
   .pz-etapa.on .ck{color:#fff;border-color:transparent}
-  .pz-etapa.est-enviado.on .ck{background:#2563eb}.pz-etapa.est-aceptado.on .ck{background:#0b7a4b}.pz-etapa.est-obra.on .ck{background:#b45309}.pz-etapa.est-cobrado.on .ck{background:#065f46}.pz-etapa.est-rechazado.on .ck{background:#b42318}
+  .pz-etapa.est-enviado.on .ck{background:#2563eb}.pz-etapa.est-aceptado.on .ck{background:#0b7a4b}.pz-etapa.est-obra.on .ck{background:#b45309}.pz-etapa.est-terminado.on .ck{background:#7c3aed}.pz-etapa.est-cobrado.on .ck{background:#065f46}.pz-etapa.est-rechazado.on .ck{background:#b42318}
   .pz-etapa.est-rechazado{border-style:dashed}
   .pz-etapa.off{opacity:.45}
   .pz-cobros{display:grid;gap:8px}
@@ -208,7 +208,7 @@ css.textContent = `
   .pz-saldo b{font-size:15px}
   .estados-fila{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;white-space:normal !important}
   .chip-est{font-style:normal;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;color:#fff;background:#6b7a72}
-  .chip-est.est-enviado{background:#2563eb}.chip-est.est-aceptado{background:#0b7a4b}.chip-est.est-obra{background:#b45309}.chip-est.est-cobrado{background:#065f46}.chip-est.est-rechazado{background:#b42318}
+  .chip-est.est-enviado{background:#2563eb}.chip-est.est-aceptado{background:#0b7a4b}.chip-est.est-obra{background:#b45309}.chip-est.est-terminado{background:#7c3aed}.chip-est.est-cobrado{background:#065f46}.chip-est.est-rechazado{background:#b42318}
   .chip-est.est-aviso{background:#fde68a;color:#7c4a03}.chip-est.est-saldo{background:#fee2e2;color:#991b1b}
   .pz-hint{font-size:12.5px;color:var(--muted);margin:4px 0 8px}
   .pz-sticky{position:sticky;bottom:0;z-index:5;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 -4px 16px rgba(0,0,0,.12)}
@@ -236,7 +236,7 @@ function chipsEtapas(x){
 }
 function etapasHTML(){
   const h = P.hitos, rech = !!h.rechazado, acep = ACEPTADO.some(s => h[s]);
-  const DESC = { enviado: 'Se lo mandaste al cliente', aceptado: 'El cliente dio el OK', obra: 'Trabajo en curso', cobrado: 'Se cobró el total' };
+  const DESC = { enviado: 'Se lo mandaste al cliente', aceptado: 'El cliente dio el OK', obra: 'Trabajo en curso', terminado: 'Trabajo finalizado', cobrado: 'Se cobró el total' };
   const fila = (s, bloqueado, nota) => `<div class="pz-etapa est-${s}${h[s] ? ' on' : ''}${bloqueado ? ' off' : ''}">
       <button type="button" class="ck" data-etapa="${s}" ${bloqueado ? 'disabled' : ''} aria-pressed="${h[s] ? 'true' : 'false'}" aria-label="${h[s] ? 'Desmarcar' : 'Marcar'} ${estadoTxt(s)}">${h[s] ? '✓' : ''}</button>
       <div><b>${estadoTxt(s)}</b><small>${nota}</small></div>
@@ -249,7 +249,7 @@ function listaHTML(){
   return lista.slice().reverse().map(normHitos).map(x => `<div class="pz-row${x.id === P.id ? ' actual' : ''}" data-q="${esc([x.numero, x.cliente, x.obra, x.direccion, fmtD(x.fecha)].join(' ').toLowerCase())}" data-abrir="${x.id}" role="button" tabindex="0" title="Abrir">
     <div class="info"><b>${esc(x.cliente || 'Sin cliente')}${x.id === P.id ? ' <em>abierto</em>' : ''}</b>${x.obra ? `<span>${esc(x.obra)}</span>` : ''}
     <span class="meta"><b class="monto">$ ${money(x._total || 0)}</b> · N° ${esc(x.numero)} · ${fmtD(x.fecha)}</span>
-    <span class="estados-fila">${chipsEtapas(x)}${x.estado === 'enviado' && diasDesde(x.enviado) >= 7 ? `<i class="chip-est est-aviso">Sin respuesta hace ${diasDesde(x.enviado)} días</i>` : ''}${['aceptado','obra'].includes(x.estado) && (x._total || 0) - cobrado(x) > 0 && (x.cobros || []).length ? `<i class="chip-est est-saldo">Saldo $ ${money((x._total || 0) - cobrado(x))}</i>` : ''}</span></div>
+    <span class="estados-fila">${chipsEtapas(x)}${x.estado === 'enviado' && diasDesde(x.enviado) >= 7 ? `<i class="chip-est est-aviso">Sin respuesta hace ${diasDesde(x.enviado)} días</i>` : ''}${x.estado === 'terminado' && diasDesde(x.hitos.terminado) >= 7 ? `<i class="chip-est est-aviso">Terminado hace ${diasDesde(x.hitos.terminado)} días, sin cobrar</i>` : ''}${['aceptado','obra','terminado'].includes(x.estado) && (x._total || 0) - cobrado(x) > 0 && (x.cobros || []).length ? `<i class="chip-est est-saldo">Saldo $ ${money((x._total || 0) - cobrado(x))}</i>` : ''}</span></div>
     <div class="acts"><button data-dup="${x.id}" title="Nuevo presupuesto usando este como base">Duplicar</button><button data-borrar="${x.id}" title="Borrar" aria-label="Borrar">✕</button></div></div>`).join('');
 }
 const condLista = () => Array.isArray(P.condArr) ? P.condArr.slice() : (String(P.condiciones || '') === '' ? [] : String(P.condiciones).split('\n'));
