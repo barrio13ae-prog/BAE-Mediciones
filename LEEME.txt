@@ -1,24 +1,37 @@
-INFORMES DT-6650 — App instalable para Android y iPhone
-=========================================================
+BAE Servicios de Instalaciones — App instalable para Android, iPhone y PC
+=========================================================================
 
-Contenido de esta carpeta
-- index.html ............ la app
-- manifest.webmanifest .. nombre, colores e íconos para instalarla
-- sw.js ................. permite usarla sin conexión
-- icons/ ................ íconos de la app
+Dirección: https://app.baeinstalaciones.com.ar
+Ingreso: solo cuentas @baeinstalaciones.com.ar (Google).
 
-Subirla gratis a GitHub Pages (se hace una sola vez)
----------------------------------------------------
-1. Creá una cuenta gratis en https://github.com (si no tenés).
-2. Arriba a la derecha: "+" > "New repository".
-   - Repository name: informes-dt6650
-   - Marcá "Public" y tocá "Create repository".
-3. En el repositorio nuevo: "uploading an existing file" (o "Add file" > "Upload files").
-   Arrastrá TODO el contenido de esta carpeta (index.html, manifest.webmanifest,
-   sw.js y la carpeta icons). Abajo tocá "Commit changes".
-4. Andá a "Settings" > "Pages". En "Branch" elegí "main" y carpeta "/ (root)". "Save".
-5. En uno o dos minutos la app queda en:
-   https://TU-USUARIO.github.io/informes-dt6650/
+Módulos: informe DT-6650, protocolo SRT 900/15, diseño de PAT, presupuestos,
+informes guardados, clientes y vencimientos, calculadoras de obra y gas (NAG-200).
+
+Archivos
+--------
+- index.html ............. la app (pantalla principal y estilos)
+- srt.js, presu.js, informes.js, clientes.js, calc.js, gas.js .. módulos
+- nube.js ................ ingreso con Google y guardado en Google Drive
+- precios-ref.js ......... precios de referencia de mano de obra
+- logo.js ................ logo
+- manifest.webmanifest ... nombre, colores e íconos para instalarla
+- sw.js .................. permite usarla sin conexión y avisa cuando hay versión nueva
+- icon-*.png, apple-touch-icon.png .. íconos
+- CNAME .................. dominio propio para GitHub Pages
+
+Publicación
+-----------
+La app se publica con GitHub Pages desde la rama "main" (carpeta raíz).
+Lo que se sube a "main" queda en línea en uno o dos minutos.
+
+Actualizarla
+------------
+1. Subí los archivos modificados al repositorio.
+2. En sw.js, subí el número de CACHE (por ejemplo 'bae-v47' -> 'bae-v48').
+   Así, quien tenga la app abierta ve el aviso "Hay una versión nueva" con el
+   botón Actualizar.
+3. Opcional: subir también el ?v= del archivo en index.html. Ya no es
+   obligatorio: la app siempre consulta si los archivos cambiaron.
 
 Instalarla en el celular
 ------------------------
@@ -27,16 +40,11 @@ Instalarla en el celular
 - iPhone (Safari): abrí el link > botón Compartir > "Agregar a inicio".
 - PC (Chrome o Edge): ícono de instalar en la barra de direcciones.
 
-Después de abrirla una vez con internet, funciona sin conexión.
-
-Actualizarla
-------------
-Cuando haya una versión nueva, subí el index.html nuevo al mismo repositorio
-(reemplaza al anterior). La app se actualiza sola la próxima vez que la abras
-con internet.
+Después de abrirla una vez con internet, funciona sin conexión
+(incluida la generación de PDF).
 
 Privacidad
 ----------
-Las mediciones y los datos del informe se procesan solo en tu dispositivo:
-no se suben a ningún servidor. El repositorio público contiene únicamente
-el código de la app, no tus mediciones.
+Las mediciones y los datos se guardan en el dispositivo y, si se elige,
+en el Google Drive de la cuenta que ingresó. El repositorio público
+contiene únicamente el código de la app, no los datos.

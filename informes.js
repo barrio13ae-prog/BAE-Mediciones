@@ -461,8 +461,12 @@ function cargarLeaflet(){
   if(window.L && L.map) return Promise.resolve();
   if(leafletP) return leafletP;
   leafletP = new Promise((ok, mal) => {
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'; document.head.appendChild(css);
-    const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.crossOrigin = 'anonymous';
+    css.integrity = 'sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw==';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'; document.head.appendChild(css);
+    const s = document.createElement('script'); s.crossOrigin = 'anonymous';
+    s.integrity = 'sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==';
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
     s.onload = () => ok(); s.onerror = () => { leafletP = null; mal(new Error('sin conexión para cargar el mapa')); }; document.head.appendChild(s);
   });
   return leafletP;

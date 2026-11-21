@@ -12,8 +12,8 @@
 <title>BAE Servicios de Instalaciones — Herramientas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
   :root{
     --bg:#eef3f5; --card:#fff; --ink:#0f2733; --muted:#4a5d66; --line:#d5e0e5;
@@ -65,6 +65,9 @@
   label > input,label > select,label > textarea{margin-top:4px}
   .files{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
   .chip{background:var(--neutral-bg);border-radius:20px;padding:4px 10px;font-size:13px;display:flex;gap:6px;align-items:center}
+  #baeNueva{position:fixed;left:50%;bottom:max(16px, env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9000;width:calc(100% - 32px);max-width:440px;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px;background:var(--card);color:var(--ink);border:1px solid var(--accent);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+  #baeNueva span{flex:1;font-size:14px}
+  #baeNueva button:last-child{border:none;background:none;color:var(--muted);padding:6px 8px}
   .chip button{border:none;background:none;padding:0 2px;color:var(--muted);font-size:15px}
   .limits{width:100%;border-collapse:collapse}
   .limits th,.limits td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);font-size:14px}
@@ -1165,14 +1168,34 @@ window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles, 
 <script src="srt.js?v=20"></script>
 <script src="precios-ref.js?v=1"></script>
 <script src="presu.js?v=17"></script>
-<script src="informes.js?v=10"></script>
+<script src="informes.js?v=11"></script>
 <script src="clientes.js?v=3"></script>
 <script src="calc.js?v=1"></script>
 <script src="gas.js?v=3"></script>
 <script>
 // instalable como app (GitHub Pages); dentro de Claude simplemente se omite
 if('serviceWorker' in navigator && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)){
-  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // la app instalada puede quedar abierta días: al volver a ella, se fija si hay versión nueva
+      document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') reg.update().catch(() => {}); });
+    }).catch(() => {});
+  });
+  // cuando se instala una versión nueva, se avisa (no se recarga sola para no perder lo que se está cargando)
+  const habiaVersion = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if(!habiaVersion || document.getElementById('baeNueva')) return;
+    const b = document.createElement('div'); b.id = 'baeNueva'; b.setAttribute('role', 'status');
+    b.innerHTML = '<span>Hay una versión nueva de la app.</span><button class="primary" type="button">Actualizar</button><button type="button" aria-label="Más tarde">✕</button>';
+    const [act, cerrar] = b.querySelectorAll('button');
+    act.onclick = () => location.reload();
+    cerrar.onclick = () => b.remove();
+    document.body.appendChild(b);
+  });
+}
+// pide al navegador que no borre los datos guardados en este dispositivo (Safari los borra si la app no se usa por unos días)
+if(navigator.storage && navigator.storage.persist){
+  navigator.storage.persisted().then(p => p || navigator.storage.persist()).catch(() => {});
 }
 </script>
 </body>
