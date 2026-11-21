@@ -145,8 +145,8 @@ css.textContent = `
   .pz-fmt input{display:none}
   .pz-fmt b{display:block;margin-bottom:4px}
   .pz-fmt span{font-size:13px;color:var(--muted);font-weight:400}
-  .pz-fmt.pz-rubro{grid-template-columns:repeat(3,1fr)}
-  @media (max-width:520px){ .pz-fmt.pz-rubro{grid-template-columns:1fr} }
+  .pz-fmt.pz-rubro{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  @media (max-width:520px){ .pz-fmt.pz-rubro{grid-template-columns:1fr 1fr} }
   .pz-conds{display:grid;gap:8px}
   .pz-cond{display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:start}
   #view-presu .pz-cond textarea{min-height:44px;font-size:14px;margin:0;field-sizing:content;resize:vertical}
@@ -332,8 +332,9 @@ function render(){
       <label class="${simple() ? 'on' : ''}"><input type="radio" name="pzFmt" value="simple" ${simple() ? 'checked' : ''}><b>Simple</b><span>Una tabla de ítems, alcance, condiciones y datos de pago. El del día a día.</span></label>
       <label class="${simple() ? '' : 'on'}"><input type="radio" name="pzFmt" value="completo" ${simple() ? '' : 'checked'}><b>Completo</b><span>Secciones numeradas, mano de obra y materiales por separado, total en letras.</span></label>
     </div>
-    <h3 class="sub">Matrícula en el encabezado</h3>
-    <div class="pz-fmt pz-rubro">${[['elec','Electricidad','Técnico electromecánico · TECA 01789'],['gas','Gas','Gasista 1.ª categoría · 80235899'],['ambas','Ambas','Las dos matrículas']].map(([k,t,d]) => `<label class="${rubro() === k ? 'on' : ''}"><input type="radio" name="pzRubro" value="${k}" ${rubro() === k ? 'checked' : ''}><b>${t}</b><span>${d}</span></label>`).join('')}</div>
+    <h3 class="sub">Rubro del trabajo</h3>
+    <p class="pz-hint" style="margin-top:-4px">Define la matrícula del encabezado del PDF y en qué rubro se cuentan los cobros en el Resumen.</p>
+    <div class="pz-fmt pz-rubro">${[['elec','Electricidad','Matrícula técnico electromecánico · TECA 01789'],['gas','Gas','Matrícula gasista 1.ª categoría · 80235899'],['ambas','Electricidad y gas','Las dos matrículas'],['agua','Agua / sanitarios','Sin matrícula en el PDF'],['otro','Otros trabajos','Techos, pintura, etc. · sin matrícula en el PDF']].map(([k,t,d]) => `<label class="${rubro() === k ? 'on' : ''}"><input type="radio" name="pzRubro" value="${k}" ${rubro() === k ? 'checked' : ''}><b>${t}</b><span>${d}</span></label>`).join('')}</div>
   </section>
 
   <section class="card"><h2><span class="step">1</span> Presupuesto y cliente</h2>
@@ -575,7 +576,8 @@ async function pdf(envio){
   let hy = y + 9;
   const credE = [pf.titulo, pf.matTec ? 'Matrícula: ' + pf.matTec : ''].filter(Boolean).join(' · ');
   const credG = [pf.tituloGas, pf.matGas ? 'Matrícula: ' + pf.matGas : ''].filter(Boolean).join(' · ');
-  const creds = rubro() === 'gas' ? [credG] : rubro() === 'ambas' ? [credE, credG] : [credE];
+  // agua/sanitarios y otros trabajos no llevan matrícula en el encabezado
+  const creds = { gas: [credG], ambas: [credE, credG], agua: [], otro: [] }[rubro()] || [credE];
   creds.filter(Boolean).forEach(c => { doc.text(SAFE(c), PW - M, hy, { align: 'right' }); hy += 4.6; });
   if(pf.tel){ doc.text(SAFE('Teléfono: ' + pf.tel), PW - M, hy, { align: 'right' }); hy += 4.6; }
   const mail = pf.email; if(mail){ doc.text(SAFE('Email: ' + mail), PW - M, hy, { align: 'right' }); hy += 4.6; }

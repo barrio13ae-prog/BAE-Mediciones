@@ -124,7 +124,7 @@ css.textContent = `
   .rs-ley i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:color-mix(in srgb,var(--accent) 35%,var(--card))}
   .rs-ley i.c{background:var(--accent)}
   .rs-rubros{display:grid;gap:8px}
-  .rs-rubro{display:grid;grid-template-columns:110px 1fr auto 38px;gap:10px;align-items:center;font-size:13.5px}
+  .rs-rubro{display:grid;grid-template-columns:minmax(90px,140px) 1fr auto 38px;gap:10px;align-items:center;font-size:13.5px}
   .rs-rubro .barra{height:10px;border-radius:5px;background:var(--neutral-bg);overflow:hidden}
   .rs-rubro .barra i{display:block;height:100%;border-radius:5px;background:var(--accent)}
   .rs-rubro small{color:var(--muted);text-align:right}
@@ -256,9 +256,9 @@ const enMes = (iso, m) => String(iso || '').slice(0, 7) === m;
 const ACEPT = ['aceptado', 'obra', 'cobrado'];
 
 /* ---------- ingresos sin presupuesto (emergencias, trabajos sueltos) ---------- */
-const RUBROS = [['elec', 'Electricidad'], ['gas', 'Gas'], ['agua', 'Agua'], ['otro', 'Otro']];
+const RUBROS = [['elec', 'Electricidad'], ['gas', 'Gas'], ['agua', 'Agua / sanitarios'], ['otro', 'Otros (techos, pintura…)']];
 const TIPOS_ING = [['emergencia', 'Emergencia'], ['suelto', 'Trabajo sin presupuesto']];
-const rubroTxt = k => ({ elec: 'Electricidad', gas: 'Gas', agua: 'Agua', otro: 'Otro', ambas: 'Electricidad y gas' })[k] || 'Otro';
+const rubroTxt = k => ({ elec: 'Electricidad', gas: 'Gas', agua: 'Agua / sanitarios', otro: 'Otros trabajos', ambas: 'Electricidad y gas' })[k] || 'Otros trabajos';
 const tipoTxt = k => (TIPOS_ING.find(t => t[0] === k) || TIPOS_ING[1])[1];
 let ingresos = store.get('bae.ing.lista', []), ingBorr = store.get('bae.ing.borrados', []);
 const guardarIng = () => store.set('bae.ing.lista', ingresos);
