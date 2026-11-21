@@ -78,11 +78,27 @@ function nuevo(){
   return { id: 'p' + Date.now(), formato: 'simple', numero: nuevoNumero(), fecha: isoHoy(), validez: 15, anticipo: '',
     cliente: '', telCliente: '', direccion: '', obra: '', totalTxt: 'Total mano de obra', alcance: '', extraTitulo: '', extraTexto: '', moIntro: true,
     mo: [{ desc: '', cant: 1, precio: '' }], mat: [], matTotal: '', matIncluidos: true,
-    condiciones: COND_SIMPLE, estado: 'borrador', cobros: [] };
+    condiciones: COND_SIMPLE, estado: 'borrador', hitos: {}, cobros: [] };
 }
 const ESTADOS = [['borrador','Borrador'],['enviado','Enviado'],['aceptado','Aceptado'],['obra','En obra'],['cobrado','Cobrado'],['rechazado','Rechazado']];
 const estadoTxt = e => (ESTADOS.find(x => x[0] === (e || 'borrador')) || ESTADOS[0])[1];
 const cobrado = x => (x.cobros || []).reduce((a, c) => a + num(c.monto), 0);
+/* Seguimiento por etapas: cada presupuesto guarda en "hitos" la fecha de cada etapa que atravesó.
+   "estado" queda como la etapa más avanzada (lo usan la lista, el resumen y los clientes). */
+const ETAPAS = ['enviado', 'aceptado', 'obra', 'cobrado'];
+const ACEPTADO = ['aceptado', 'obra', 'cobrado'];
+function normHitos(x){
+  if(!x.hitos || typeof x.hitos !== 'object'){
+    // presupuestos anteriores: se reconstruyen las etapas a partir del estado que tenían
+    const h = {}, e = x.estado || 'borrador', f = x.fecha || isoHoy();
+    if(e === 'rechazado'){ if(x.enviado) h.enviado = x.enviado; h.rechazado = x.enviado || f; }
+    else { const k = ETAPAS.indexOf(e); ETAPAS.slice(0, k + 1).forEach(s => h[s] = x.enviado || f); }
+    x.hitos = h;
+  }
+  x.estado = x.hitos.rechazado ? 'rechazado' : ETAPAS.slice().reverse().find(s => x.hitos[s]) || 'borrador';
+  x.enviado = x.hitos.enviado || '';
+  return x;
+}
 const diasDesde = iso => iso ? Math.floor((Date.now() - new Date(iso + 'T12:00:00')) / 864e5) : 0;
 function waLink(tel, texto){
   let d = String(tel || '').replace(/\D/g, '');
@@ -92,6 +108,7 @@ function waLink(tel, texto){
 let P = store.get('bae.presu.actual', null) || nuevo();
 if(!P.formato) P.formato = 'completo';
 if(!P.estado) P.estado = 'borrador'; if(!Array.isArray(P.cobros)) P.cobros = [];
+normHitos(P); lista.forEach(normHitos);
 const simple = () => P.formato === 'simple';
 const rubro = () => P.rubro || 'elec';
 const guardarActual = () => store.set('bae.presu.actual', P);
@@ -169,6 +186,17 @@ css.textContent = `
   .pz-estados button.on{color:#fff;border-color:transparent}
   .pz-estados .est-borrador.on{background:#6b7a72}.pz-estados .est-enviado.on{background:#2563eb}.pz-estados .est-aceptado.on{background:#0b7a4b}
   .pz-estados .est-obra.on{background:#b45309}.pz-estados .est-cobrado.on{background:#065f46}.pz-estados .est-rechazado.on{background:#b42318}
+  .pz-etapas{display:grid;gap:8px}
+  .pz-etapa{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:12px}
+  .pz-etapa .ck{width:30px;height:30px;padding:0;border-radius:50%;display:grid;place-items:center;font-size:15px;line-height:1}
+  .pz-etapa b{font-size:14.5px}
+  .pz-etapa small{display:block;font-size:12px;color:var(--muted);font-weight:400}
+  .pz-etapa input[type=date]{width:auto;margin:0;padding:6px 8px;font-size:13.5px}
+  .pz-etapa.on{background:var(--neutral-bg)}
+  .pz-etapa.on .ck{color:#fff;border-color:transparent}
+  .pz-etapa.est-enviado.on .ck{background:#2563eb}.pz-etapa.est-aceptado.on .ck{background:#0b7a4b}.pz-etapa.est-obra.on .ck{background:#b45309}.pz-etapa.est-cobrado.on .ck{background:#065f46}.pz-etapa.est-rechazado.on .ck{background:#b42318}
+  .pz-etapa.est-rechazado{border-style:dashed}
+  .pz-etapa.off{opacity:.45}
   .pz-cobros{display:grid;gap:8px}
   .pz-cobro{display:grid;grid-template-columns:140px 1fr 1fr 34px;gap:8px;align-items:center}
   .pz-cobro input{margin:0}
@@ -200,12 +228,28 @@ function itemsHTML(kind){
     </div>`;
   }).join('');
 }
+// en la lista: todas las etapas que atravesó (o "Borrador" si todavía ninguna)
+function chipsEtapas(x){
+  const h = x.hitos || {}, ks = ETAPAS.filter(s => h[s]).concat(h.rechazado ? ['rechazado'] : []);
+  if(!ks.length) return '<i class="chip-est est-borrador">Borrador</i>';
+  return ks.map(s => `<i class="chip-est est-${s}" title="${estadoTxt(s)} el ${fmtD(h[s])}">${estadoTxt(s)}</i>`).join('');
+}
+function etapasHTML(){
+  const h = P.hitos, rech = !!h.rechazado, acep = ACEPTADO.some(s => h[s]);
+  const DESC = { enviado: 'Se lo mandaste al cliente', aceptado: 'El cliente dio el OK', obra: 'Trabajo en curso', cobrado: 'Se cobró el total' };
+  const fila = (s, bloqueado, nota) => `<div class="pz-etapa est-${s}${h[s] ? ' on' : ''}${bloqueado ? ' off' : ''}">
+      <button type="button" class="ck" data-etapa="${s}" ${bloqueado ? 'disabled' : ''} aria-pressed="${h[s] ? 'true' : 'false'}" aria-label="${h[s] ? 'Desmarcar' : 'Marcar'} ${estadoTxt(s)}">${h[s] ? '✓' : ''}</button>
+      <div><b>${estadoTxt(s)}</b><small>${nota}</small></div>
+      ${h[s] ? `<input type="date" data-hfecha="${s}" value="${esc(h[s])}" aria-label="Fecha: ${estadoTxt(s)}">` : '<span></span>'}</div>`;
+  return `<div class="pz-etapas">${ETAPAS.map(s => fila(s, rech, h[s] ? DESC[s] : rech ? 'No se avanza: el presupuesto fue rechazado' : DESC[s])).join('')}
+    ${fila('rechazado', acep && !rech, rech ? 'Tocá ✓ para deshacer si fue un error' : acep ? 'Ya fue aceptado: no se puede rechazar' : 'El cliente no lo aceptó; se cierra el seguimiento')}</div>`;
+}
 function listaHTML(){
   if(!lista.length) return '<p class="pz-hint">Todavía no guardaste presupuestos.</p>';
-  return lista.slice().reverse().map(x => `<div class="pz-row${x.id === P.id ? ' actual' : ''}" data-q="${esc([x.numero, x.cliente, x.obra, x.direccion, fmtD(x.fecha)].join(' ').toLowerCase())}" data-abrir="${x.id}" role="button" tabindex="0" title="Abrir">
+  return lista.slice().reverse().map(normHitos).map(x => `<div class="pz-row${x.id === P.id ? ' actual' : ''}" data-q="${esc([x.numero, x.cliente, x.obra, x.direccion, fmtD(x.fecha)].join(' ').toLowerCase())}" data-abrir="${x.id}" role="button" tabindex="0" title="Abrir">
     <div class="info"><b>${esc(x.cliente || 'Sin cliente')}${x.id === P.id ? ' <em>abierto</em>' : ''}</b>${x.obra ? `<span>${esc(x.obra)}</span>` : ''}
     <span class="meta"><b class="monto">$ ${money(x._total || 0)}</b> · N° ${esc(x.numero)} · ${fmtD(x.fecha)}</span>
-    <span class="estados-fila"><i class="chip-est est-${x.estado || 'borrador'}">${estadoTxt(x.estado)}</i>${x.estado === 'enviado' && diasDesde(x.enviado) >= 7 ? `<i class="chip-est est-aviso">Sin respuesta hace ${diasDesde(x.enviado)} días</i>` : ''}${['aceptado','obra'].includes(x.estado) && (x._total || 0) - cobrado(x) > 0 && (x.cobros || []).length ? `<i class="chip-est est-saldo">Saldo $ ${money((x._total || 0) - cobrado(x))}</i>` : ''}</span></div>
+    <span class="estados-fila">${chipsEtapas(x)}${x.estado === 'enviado' && diasDesde(x.enviado) >= 7 ? `<i class="chip-est est-aviso">Sin respuesta hace ${diasDesde(x.enviado)} días</i>` : ''}${['aceptado','obra'].includes(x.estado) && (x._total || 0) - cobrado(x) > 0 && (x.cobros || []).length ? `<i class="chip-est est-saldo">Saldo $ ${money((x._total || 0) - cobrado(x))}</i>` : ''}</span></div>
     <div class="acts"><button data-dup="${x.id}" title="Nuevo presupuesto usando este como base">Duplicar</button><button data-borrar="${x.id}" title="Borrar" aria-label="Borrar">✕</button></div></div>`).join('');
 }
 const condLista = () => Array.isArray(P.condArr) ? P.condArr.slice() : (String(P.condiciones || '') === '' ? [] : String(P.condiciones).split('\n'));
@@ -314,12 +358,13 @@ function render(){
   </section>
 
   <section class="card" id="pzSeg"><h2>Seguimiento</h2>
-    <div class="pz-estados">${ESTADOS.map(([k, t]) => `<button type="button" class="est-${k}${(P.estado || 'borrador') === k ? ' on' : ''}" data-estado="${k}">${t}</button>`).join('')}</div>
+    <p class="pz-hint" style="margin-top:0">Marcá cada etapa por la que pasó el presupuesto; podés corregir la fecha. Se guarda solo${lista.some(x => x.id === P.id) ? '' : ' (al marcar la primera etapa queda en "Mis presupuestos")'}.</p>
+    ${etapasHTML()}
     <h3 class="sub" style="margin:14px 0 6px">Cobros</h3>
     <div class="pz-cobros">${(P.cobros || []).map((c, i) => `<div class="pz-cobro"><input type="date" data-cob="${i}" data-cf="fecha" value="${esc(c.fecha)}"><input data-cob="${i}" data-cf="monto" value="${esc(c.monto)}" placeholder="Monto" inputmode="numeric"><input data-cob="${i}" data-cf="nota" value="${esc(c.nota)}" placeholder="ej. Anticipo"><button class="del" data-cobdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}</div>
     <div class="row" style="margin-top:8px"><button id="pzCobAdd">+ Registrar cobro</button></div>
     <div class="pz-saldo"><div><span>Total</span><b>$ ${money(total())}</b></div><div><span>Cobrado</span><b id="pzCobrado">$ ${money(cobrado(P))}</b></div><div><span>Saldo</span><b id="pzSaldo">$ ${money(total() - cobrado(P))}</b></div></div>
-    ${['aceptado','obra','cobrado'].includes(P.estado) ? '<div class="row" style="margin-top:12px"><button id="pzAInforme">Crear el informe de esta obra →</button></div>' : ''}
+    ${ACEPTADO.includes(P.estado) ? '<div class="row" style="margin-top:12px"><button id="pzAInforme">Crear el informe de esta obra →</button></div>' : ''}
   </section>
 
   <div class="pz-sticky">
@@ -380,9 +425,11 @@ function bind(){
     try{ await navigator.clipboard.writeText(t); msg('Datos de cuenta copiados: pegalos en WhatsApp o en un mail.'); }
     catch(e){ msg('No se pudo compartir. Datos: ' + t.replace(/\n/g, ' · '), true); }
   };
-  $$('[data-estado]', v).forEach(b => b.onclick = () => { P.estado = b.dataset.estado; if(P.estado === 'enviado' && !P.enviado) P.enviado = isoHoy(); guardarActual(); render(); document.getElementById('pzSeg').scrollIntoView({ block: 'center' }); });
+  $$('[data-etapa]', v).forEach(b => b.onclick = () => marcarEtapa(b.dataset.etapa));
+  $$('[data-hfecha]', v).forEach(el => el.onchange = () => { if(el.value){ P.hitos[el.dataset.hfecha] = el.value; seguir(); } });
+  $$('[data-cob]', v).forEach(el => el.addEventListener('change', persistirCobros));
   $$('[data-cob]', v).forEach(el => el.addEventListener('input', () => { P.cobros[+el.dataset.cob][el.dataset.cf] = el.value; guardarActual(); const sd = $('#pzSaldo', v); if(sd) sd.textContent = '$ ' + money(total() - cobrado(P)); const cb = $('#pzCobrado', v); if(cb) cb.textContent = '$ ' + money(cobrado(P)); }));
-  $$('[data-cobdel]', v).forEach(b => b.onclick = () => { P.cobros.splice(+b.dataset.cobdel, 1); guardarActual(); render(); document.getElementById('pzSeg').scrollIntoView({ block: 'center' }); });
+  $$('[data-cobdel]', v).forEach(b => b.onclick = () => { P.cobros.splice(+b.dataset.cobdel, 1); guardarActual(); persistirCobros(); render(); document.getElementById('pzSeg').scrollIntoView({ block: 'center' }); });
   const ca = $('#pzCobAdd', v); if(ca) ca.onclick = () => { P.cobros.push({ fecha: isoHoy(), monto: '', nota: P.cobros.length ? 'Pago' : 'Anticipo' }); guardarActual(); render(); const l = $$('[data-cf="monto"]', v).pop(); if(l){ l.scrollIntoView({ block: 'center' }); l.focus(); } };
   const ai = $('#pzAInforme', v); if(ai) ai.onclick = () => { if(window.__informes && window.__informes.nuevoPara){ window.__informes.nuevoPara({ empresa: P.cliente, obra: P.obra, direccion: P.direccion }); location.hash = '#informe'; } };
   const wa = $('#pzWa', v); if(wa) wa.onclick = () => pdf(true);
@@ -391,10 +438,42 @@ function bind(){
   $('#pzPdf', v).onclick = pdf;
   bindLista();
 }
+/* ---------- seguimiento: cada cambio se guarda en "Mis presupuestos" sin limpiar el formulario ---------- */
+const enLista = () => lista.some(x => x.id === P.id);
+function seguir(aviso){
+  normHitos(P); guardarActual();
+  if(!vacio()){ guardar(true); sincronizar(false); }
+  render();
+  const s = document.getElementById('pzSeg'); if(s) s.scrollIntoView({ block: 'center' });
+  msg(aviso || (vacio() ? 'Etapa marcada. Completá el cliente o un ítem para que quede en "Mis presupuestos".' : 'Seguimiento guardado: ' + estadoTxt(P.estado) + '.'));
+}
+function marcarEtapa(s){
+  const h = P.hitos, hoy = isoHoy(); let aviso = '';
+  if(h[s]) delete h[s];                                   // desmarcar (por si fue un error)
+  else if(s === 'rechazado'){
+    if(ACEPTADO.some(k => h[k])) return;                  // ya aceptado: no se puede rechazar
+    h.rechazado = hoy;
+  } else {
+    if(h.rechazado) return;                               // rechazado: no se avanza más
+    ETAPAS.slice(0, ETAPAS.indexOf(s)).forEach(p => { if(!h[p]) h[p] = hoy; }); // las etapas anteriores se dan por pasadas
+    h[s] = hoy;
+    if(s === 'cobrado'){
+      const saldo = total() - cobrado(P);
+      if(saldo > 0.5){ P.cobros.push({ fecha: hoy, monto: String(Math.round(saldo)), nota: P.cobros.length ? 'Saldo' : 'Pago total' });
+        aviso = `Cobrado: se registró un cobro por el saldo ($ ${money(saldo)}). Si fue otro monto, corregilo en Cobros.`; }
+    }
+  }
+  seguir(aviso);
+}
+function persistirCobros(){
+  if(!enLista() || vacio()) return;
+  guardar(true); sincronizar(false);
+  const l = $('#pzLista', v); if(l){ l.innerHTML = listaHTML(); bindLista(); }
+}
 function bindLista(){
-  $$('[data-abrir]', v).forEach(b => { const ir = e => { if(e.target.closest('button')) return; const x = lista.find(y => y.id === b.dataset.abrir); if(x){ P = JSON.parse(JSON.stringify(x)); guardarActual(); render(); window.scrollTo(0, 0); msg('Abierto el N° ' + P.numero + '.'); } };
+  $$('[data-abrir]', v).forEach(b => { const ir = e => { if(e.target.closest('button')) return; const x = lista.find(y => y.id === b.dataset.abrir); if(x){ P = JSON.parse(JSON.stringify(x)); normHitos(P); guardarActual(); render(); window.scrollTo(0, 0); msg('Abierto el N° ' + P.numero + '.'); } };
     b.onclick = ir; b.onkeydown = e => { if(e.key === 'Enter') ir(e); }; });
-  $$('[data-dup]', v).forEach(b => b.onclick = () => { const x = lista.find(y => y.id === b.dataset.dup); if(x){ P = JSON.parse(JSON.stringify(x)); delete P._driveId; delete P._dirty; delete P._mod; P.id = 'p' + Date.now(); P.numero = nuevoNumero(); P.fecha = isoHoy(); guardarActual(); render(); msg('Copia lista como N° ' + P.numero + '. Ajustá cliente y montos.'); } });
+  $$('[data-dup]', v).forEach(b => b.onclick = () => { const x = lista.find(y => y.id === b.dataset.dup); if(x){ P = JSON.parse(JSON.stringify(x)); delete P._driveId; delete P._dirty; delete P._mod; P.id = 'p' + Date.now(); P.numero = nuevoNumero(); P.fecha = isoHoy(); P.hitos = {}; P.cobros = []; delete P.estado; delete P.enviado; normHitos(P); guardarActual(); render(); msg('Copia lista como N° ' + P.numero + '. Ajustá cliente y montos.'); } });
   $$('[data-borrar]', v).forEach(b => b.onclick = () => {
     if(b.dataset.ok !== '1'){ b.dataset.ok = '1'; b.textContent = '¿Borrar?'; setTimeout(() => { if(b.isConnected){ b.dataset.ok = ''; b.textContent = '✕'; } }, 3000); return; }
     const x = lista.find(y => y.id === b.dataset.borrar); if(x && x._driveId){ borrados.push(x._driveId); if(x._pdfId) borrados.push(x._pdfId); store.set('bae.presu.borrados', borrados); }
@@ -428,7 +507,7 @@ const SAFE = s => String(s ?? '').replace(/≤/g, '<=').replace(/≥/g, '>=').re
 async function pdf(envio){
   if(!window.jspdf){ msg('No se cargó el generador de PDF. Abrí la app con internet una vez.', true); return; }
   if(vacio()){ msg('Completá al menos el cliente o un ítem antes de descargar.', true); return; }
-  if(envio && (!P.estado || P.estado === 'borrador')){ P.estado = 'enviado'; P.enviado = isoHoy(); }
+  if(envio && !P.hitos.enviado && !P.hitos.rechazado){ P.hitos.enviado = isoHoy(); normHitos(P); }
   guardar(true); sincronizar(true); const idPdf = P.id;
   const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = 210, M = 15, CW = PW - 2*M, BOT = simple() ? 286 : 284; let y = 14;
@@ -693,7 +772,7 @@ if(N){
     if(e.target.id === 'pzSalir'){ e.preventDefault(); N.salir(); location.reload(); }
   });
 }
-window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = x; guardarActual(); render(); }, get precios(){ return precios; }, pdf, get lista(){ return lista; }, cobrado, waLink,
+window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = normHitos(x); guardarActual(); render(); }, get precios(){ return precios; }, pdf, get lista(){ return lista; }, cobrado, waLink,
   nuevoPara(c){ P = nuevo(); P.cliente = c.nombre || ''; P.telCliente = c.telefono || ''; P.direccion = [c.direccion, c.localidad].filter(Boolean).join(', '); guardarActual(); render(); } };
 render();
 APP.route();

@@ -123,6 +123,17 @@ css.textContent = `
   .rs-ley{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:8px}
   .rs-ley i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:color-mix(in srgb,var(--accent) 35%,var(--card))}
   .rs-ley i.c{background:var(--accent)}
+  .rs-rubros{display:grid;gap:8px}
+  .rs-rubro{display:grid;grid-template-columns:110px 1fr auto 38px;gap:10px;align-items:center;font-size:13.5px}
+  .rs-rubro .barra{height:10px;border-radius:5px;background:var(--neutral-bg);overflow:hidden}
+  .rs-rubro .barra i{display:block;height:100%;border-radius:5px;background:var(--accent)}
+  .rs-rubro small{color:var(--muted);text-align:right}
+  .rs-ing-form{display:grid;gap:10px;padding:12px;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;background:var(--neutral-bg)}
+  .rs-ops{display:flex;flex-wrap:wrap;gap:6px;margin-top:-4px}
+  .rs-ops label{padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);font-size:13.5px;cursor:pointer}
+  .rs-ops label.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .rs-ops input{display:none}
+  .rs-pend small{color:var(--muted);font-size:12px}
   .rs-pend{display:grid;gap:6px;margin-top:8px}
   .rs-pend a{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;background:var(--neutral-bg);color:var(--ink);text-decoration:none;font-size:13.5px}`;
 document.head.appendChild(css);
@@ -239,19 +250,61 @@ function renderVencimientos(){
 
 /* ================= RESUMEN DEL MES ================= */
 const vRes = document.createElement('div'); vRes.className = 'view'; vRes.id = 'view-resumen'; vRes.hidden = true; APP.main.appendChild(vRes);
-APP.VIEWS.resumen = { el: vRes, title: 'Resumen', sub: 'Cómo viene el mes: presupuestos, cobros y trabajos.' };
+APP.VIEWS.resumen = { el: vRes, title: 'Resumen', sub: 'Cómo viene el mes: presupuestos, ingresos y trabajos.' };
 let mesSel = hoyISO().slice(0, 7);
 const enMes = (iso, m) => String(iso || '').slice(0, 7) === m;
 const ACEPT = ['aceptado', 'obra', 'cobrado'];
+
+/* ---------- ingresos sin presupuesto (emergencias, trabajos sueltos) ---------- */
+const RUBROS = [['elec', 'Electricidad'], ['gas', 'Gas'], ['agua', 'Agua'], ['otro', 'Otro']];
+const TIPOS_ING = [['emergencia', 'Emergencia'], ['suelto', 'Trabajo sin presupuesto']];
+const rubroTxt = k => ({ elec: 'Electricidad', gas: 'Gas', agua: 'Agua', otro: 'Otro', ambas: 'Electricidad y gas' })[k] || 'Otro';
+const tipoTxt = k => (TIPOS_ING.find(t => t[0] === k) || TIPOS_ING[1])[1];
+let ingresos = store.get('bae.ing.lista', []), ingBorr = store.get('bae.ing.borrados', []);
+const guardarIng = () => store.set('bae.ing.lista', ingresos);
+let ingEdit = null, ingSinc = '';
+let ingCorr = null, ingOtra = false;
+const escribiendoRes = () => { const a = document.activeElement; return a && vRes.contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName); };
+async function sincronizarIng(interactivo){
+  if(!N || !N.email) return;
+  if(ingCorr){ ingOtra = true; return ingCorr; }
+  if(!N.conectado){ if(interactivo) ingCorr = N.pedirToken(false).then(() => { ingCorr = null; return sincronizarIng(false); }, () => { ingCorr = null; }); return ingCorr; }
+  ingCorr = (async () => {
+    let cambio = false;
+    try{
+      cambio = await N.sincronizarColeccion({ tipo: 'ing', carpeta: 'BAE Ingresos',
+        lista: () => ingresos, setLista: l => { ingresos = l; guardarIng(); },
+        borrados: () => ingBorr, setBorrados: b => { ingBorr = b; store.set('bae.ing.borrados', ingBorr); },
+        nombre: x => ('Ingreso_' + x.fecha + '_' + (x.cliente || rubroTxt(x.rubro))).replace(/[\\/:*?"<>|]+/g, '_') });
+      ingSinc = '';
+    }catch(e){ ingSinc = e.code === 'TOKEN' ? 'Drive desconectado: tocá ↻ en Clientes o Presupuestos para reconectar.' : navigator.onLine ? 'No se pudieron sincronizar los ingresos con Drive.' : 'Sin internet: los ingresos se suben a Drive cuando vuelva la conexión.'; }
+    finally{
+      ingCorr = null;
+      if(location.hash === '#resumen' && (cambio || ingSinc) && !escribiendoRes()) renderResumen();
+      if(ingOtra){ ingOtra = false; sincronizarIng(false); }
+    }
+  })();
+  return ingCorr;
+}
+
 function datosMes(m){
   const pres = (window.__presu && window.__presu.lista) || [], infs = (window.__informes && window.__informes.lista) || [];
   const cob = x => (x.cobros || []).reduce((a, c) => a + num(c.monto), 0);
   const pm = pres.filter(x => enMes(x.fecha, m));
+  // ingresos del mes por rubro: cobros de presupuestos (según su rubro) + ingresos sin presupuesto
+  const porRubro = {};
+  pres.forEach(x => (x.cobros || []).filter(c => enMes(c.fecha, m)).forEach(c => { const k = x.rubro || 'elec'; porRubro[k] = (porRubro[k] || 0) + num(c.monto); }));
+  const im = ingresos.filter(x => enMes(x.fecha, m));
+  im.forEach(x => { const k = x.rubro || 'otro'; porRubro[k] = (porRubro[k] || 0) + num(x.monto); });
+  const cobPres = pres.reduce((a, x) => a + (x.cobros || []).filter(c => enMes(c.fecha, m)).reduce((s, c) => s + num(c.monto), 0), 0);
+  const sueltos = im.reduce((a, x) => a + num(x.monto), 0);
   return {
+    cobPres, sueltos, ingMes: im, porRubro,
+    nEmerg: im.filter(x => x.tipo === 'emergencia').length,
     nPres: pm.length, montoPres: pm.reduce((a, x) => a + (x._total || 0), 0),
     nAcep: pm.filter(x => ACEPT.includes(x.estado)).length, montoAcep: pm.filter(x => ACEPT.includes(x.estado)).reduce((a, x) => a + (x._total || 0), 0),
     nRech: pm.filter(x => x.estado === 'rechazado').length,
-    cobrado: pres.reduce((a, x) => a + (x.cobros || []).filter(c => enMes(c.fecha, m)).reduce((s, c) => s + num(c.monto), 0), 0),
+    cobrado: cobPres + sueltos,
     nInf: infs.filter(x => enMes((x.report || {}).fecha, m)).length,
     nSrt: lista.filter(c => enMes(c.srt, m)).length,
     pendientes: pres.filter(x => ACEPT.includes(x.estado) && (x._total || 0) - cob(x) > 0.5).map(x => ({ x, saldo: (x._total || 0) - cob(x) }))
@@ -265,7 +318,7 @@ function renderResumen(){
   const pend = d.pendientes.reduce((a, p) => a + p.saldo, 0), tasa = d.nPres ? Math.round(100 * d.nAcep / d.nPres) : 0;
   vRes.innerHTML = `<section class="card"><div class="rs-nav"><button id="rsPrev" aria-label="Mes anterior">‹</button><b>${mesTxt(mesSel)}</b><button id="rsNext" aria-label="Mes siguiente">›</button></div>
     <div class="rs-kpis">
-      <div class="rs-kpi acc"><span>Cobrado en el mes</span><b>$ ${money(d.cobrado)}</b><small>según los cobros registrados</small></div>
+      <div class="rs-kpi acc"><span>Ingresos del mes</span><b>$ ${money(d.cobrado)}</b><small>${d.sueltos ? `presupuestos $ ${money(d.cobPres)} · sin presupuesto $ ${money(d.sueltos)}` : 'cobros de presupuestos'}</small></div>
       <div class="rs-kpi"><span>Presupuestado</span><b>$ ${money(d.montoPres)}</b><small>${d.nPres} presupuesto${d.nPres === 1 ? '' : 's'}</small></div>
       <div class="rs-kpi"><span>Aceptado</span><b>$ ${money(d.montoAcep)}</b><small>${d.nAcep} de ${d.nPres} · ${tasa}%${d.nRech ? ' · ' + d.nRech + ' rechazado' + (d.nRech > 1 ? 's' : '') : ''}</small></div>
       <div class="rs-kpi"><span>Por cobrar (total)</span><b>$ ${money(pend)}</b><small>${d.pendientes.length} trabajo${d.pendientes.length === 1 ? '' : 's'} con saldo</small></div>
@@ -274,23 +327,83 @@ function renderResumen(){
     </div></section>
     <section class="card"><h2>Últimos 6 meses</h2>
       <div class="rs-bars">${serie.map(s => `<div class="rs-bar"><div class="pair"><i style="height:${Math.round(100 * s.montoPres / max)}%" title="Presupuestado $ ${money(s.montoPres)}"></i><i class="c" style="height:${Math.round(100 * s.cobrado / max)}%" title="Cobrado $ ${money(s.cobrado)}"></i></div><small>${MESES[+s.m.slice(5) - 1].slice(0, 3)}</small></div>`).join('')}</div>
-      <div class="rs-ley"><span><i></i>Presupuestado</span><span><i class="c"></i>Cobrado</span></div></section>
+      <div class="rs-ley"><span><i></i>Presupuestado</span><span><i class="c"></i>Ingresos</span></div></section>
+    ${rubrosHTML(d)}
+    ${ingresosHTML(d)}
     ${d.pendientes.length ? `<section class="card"><h2>Saldos por cobrar</h2><div class="rs-pend">${d.pendientes.sort((a, b) => b.saldo - a.saldo).map(p => `<a href="#presu" data-rp="${p.x.id}"><span><b>${esc(p.x.cliente || 'Sin cliente')}</b> · N° ${esc(p.x.numero)}</span><b>$ ${money(p.saldo)}</b></a>`).join('')}</div></section>` : ''}`;
   $('#rsPrev', vRes).onclick = () => { mesSel = mover(mesSel, -1); renderResumen(); };
   $('#rsNext', vRes).onclick = () => { mesSel = mover(mesSel, 1); renderResumen(); };
   $$('[data-rp]', vRes).forEach(a => a.onclick = e => { e.preventDefault(); const x = (window.__presu.lista || []).find(y => y.id === a.dataset.rp); if(x){ window.__presu.P = JSON.parse(JSON.stringify(x)); location.hash = '#presu'; setTimeout(() => { const s = document.getElementById('pzSeg'); if(s) s.scrollIntoView({ block: 'start' }); }, 80); } });
+  bindIngresos();
+}
+function rubrosHTML(d){
+  const filas = Object.entries(d.porRubro).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  if(!filas.length) return '';
+  const tot = filas.reduce((a, [, v]) => a + v, 0);
+  return `<section class="card"><h2>Ingresos por rubro</h2><div class="rs-rubros">${filas.map(([k, v]) => `<div class="rs-rubro">
+      <span>${esc(rubroTxt(k))}</span><div class="barra"><i style="width:${Math.max(2, Math.round(100 * v / tot))}%"></i></div><b>$ ${money(v)}</b><small>${Math.round(100 * v / tot)}%</small></div>`).join('')}</div>
+    <p class="cl-hint" style="margin:8px 0 0">Incluye los cobros de presupuestos (según el rubro del presupuesto) y los ingresos sin presupuesto.</p></section>`;
+}
+function ingresosHTML(d){
+  const lst = d.ingMes.slice().sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  const e = ingEdit;
+  const radios = (name, ops, val) => `<div class="rs-ops">${ops.map(([k, t]) => `<label class="${val === k ? 'on' : ''}"><input type="radio" name="${name}" value="${k}" ${val === k ? 'checked' : ''}>${t}</label>`).join('')}</div>`;
+  const form = e ? `<div class="rs-ing-form">
+      <div class="grid"><label>Fecha<input type="date" id="igFecha" value="${esc(e.fecha)}"></label>
+        <label>Monto cobrado ($)<input id="igMonto" value="${esc(e.monto)}" inputmode="numeric" placeholder="ej. 45000"></label></div>
+      <label>Rubro</label>${radios('igRubro', RUBROS, e.rubro)}
+      <label>Tipo de trabajo</label>${radios('igTipo', TIPOS_ING, e.tipo)}
+      <div class="grid"><label>Cliente (opcional)<input id="igCliente" value="${esc(e.cliente)}" list="dlClientes" placeholder="Nombre"></label>
+        <label>Detalle (opcional)<input id="igDetalle" value="${esc(e.detalle)}" placeholder="ej. Cambio de térmica quemada"></label></div>
+      <div class="row"><button class="primary" id="igGuardar">Guardar ingreso</button><button id="igCancelar">Cancelar</button>${ingresos.some(x => x.id === e.id) ? '<button id="igBorrar">Borrar</button>' : ''}</div>
+      <div class="msg" id="igMsg"></div></div>` : '';
+  return `<section class="card" id="rsIng"><div class="cl-top"><h2>Ingresos sin presupuesto</h2>${e ? '' : '<button class="primary" id="igNuevo">+ Registrar ingreso</button>'}</div>
+    <p class="cl-hint" style="margin-top:0">Emergencias y trabajos que cobraste sin presupuesto de por medio.${d.nEmerg ? ` Este mes: ${d.nEmerg} emergencia${d.nEmerg === 1 ? '' : 's'}.` : ''}</p>
+    ${ingSinc ? `<p class="cl-hint">☁ ${esc(ingSinc)}</p>` : ''}
+    ${form}
+    ${lst.length ? `<div class="rs-pend">${lst.map(x => `<a href="#resumen" data-ig="${x.id}"><span><b>${esc(x.cliente || x.detalle || tipoTxt(x.tipo))}</b> · ${fmtD(x.fecha)}<br><small>${esc(rubroTxt(x.rubro))} · ${esc(tipoTxt(x.tipo))}${x.cliente && x.detalle ? ' · ' + esc(x.detalle) : ''}</small></span><b>$ ${money(num(x.monto))}</b></a>`).join('')}</div>`
+      : e ? '' : `<p class="cl-hint">No hay ingresos sin presupuesto en ${mesTxt(mesSel)}.</p>`}</section>`;
+}
+function bindIngresos(){
+  const nuevo = $('#igNuevo', vRes);
+  if(nuevo) nuevo.onclick = () => {
+    ingEdit = { id: 'i' + Date.now(), fecha: mesSel === hoyISO().slice(0, 7) ? hoyISO() : mesSel + '-01', monto: '', rubro: 'elec', tipo: 'emergencia', cliente: '', detalle: '' };
+    renderResumen(); const m = $('#igMonto', vRes); if(m){ m.scrollIntoView({ block: 'center' }); m.focus(); }
+  };
+  $$('[data-ig]', vRes).forEach(a => a.onclick = ev => { ev.preventDefault(); const x = ingresos.find(y => y.id === a.dataset.ig); if(!x) return;
+    ingEdit = JSON.parse(JSON.stringify(x)); renderResumen(); const f = $('.rs-ing-form', vRes); if(f) f.scrollIntoView({ block: 'center' }); });
+  if(!ingEdit) return;
+  const leer = () => { ingEdit.fecha = $('#igFecha', vRes).value; ingEdit.monto = $('#igMonto', vRes).value; ingEdit.cliente = $('#igCliente', vRes).value.trim(); ingEdit.detalle = $('#igDetalle', vRes).value.trim(); };
+  $$('input[name="igRubro"], input[name="igTipo"]', vRes).forEach(r => r.onchange = () => { leer(); ingEdit[r.name === 'igRubro' ? 'rubro' : 'tipo'] = r.value; renderResumen(); });
+  const err = t => { const m = $('#igMsg', vRes); m.textContent = t; m.classList.add('err'); };
+  $('#igGuardar', vRes).onclick = () => {
+    leer();
+    if(!ingEdit.fecha) return err('Poné la fecha del cobro.');
+    if(!(num(ingEdit.monto) > 0)) return err('Poné el monto cobrado.');
+    const rec = Object.assign({}, ingEdit, { _mod: Date.now(), _dirty: true }), i = ingresos.findIndex(x => x.id === rec.id);
+    if(i >= 0){ rec._driveId = ingresos[i]._driveId; ingresos[i] = rec; } else ingresos.push(rec);
+    guardarIng();
+    if(rec.cliente) window.dispatchEvent(new CustomEvent('bae:cliente', { detail: { nombre: rec.cliente } }));
+    mesSel = rec.fecha.slice(0, 7); ingEdit = null; renderResumen(); sincronizarIng(true);
+  };
+  $('#igCancelar', vRes).onclick = () => { ingEdit = null; renderResumen(); };
+  const bb = $('#igBorrar', vRes); if(bb) bb.onclick = () => {
+    if(bb.dataset.ok !== '1'){ bb.dataset.ok = '1'; bb.textContent = '¿Seguro? Tocá de nuevo'; return; }
+    const x = ingresos.find(y => y.id === ingEdit.id); if(x && x._driveId){ ingBorr.push(x._driveId); store.set('bae.ing.borrados', ingBorr); }
+    ingresos = ingresos.filter(y => y.id !== ingEdit.id); guardarIng(); ingEdit = null; renderResumen(); sincronizarIng(false);
+  };
 }
 
 /* ---------- navegación ---------- */
 function alEntrar(){
   const h = location.hash;
   if(h === '#clientes'){ renderLista(); sincronizar(false); }
-  if(h === '#resumen') renderResumen();
+  if(h === '#resumen'){ renderResumen(); sincronizarIng(false); }
   if(h === '#inicio' || h === '' || h === '#') renderVencimientos();
 }
 window.addEventListener('hashchange', alEntrar);
 actualizarDatalist(); renderVencimientos();
-if(N && N.email) setTimeout(() => sincronizar(false), 1200);
+if(N && N.email) setTimeout(() => { sincronizar(false); sincronizarIng(false); }, 1200);
 window.__clientes = { get lista(){ return lista; }, upsert, estadoSrt, waLink, sincronizar };
 APP.route(); alEntrar();
 })();
