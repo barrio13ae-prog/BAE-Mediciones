@@ -177,9 +177,11 @@
 <section class="card">
   <h2><span class="step">2</span> Datos del informe</h2>
   <div id="reportForm">
+    <label style="margin-bottom:12px">Tipo de trabajo (título del informe)<input data-k="tipo" list="dlTipos" autocomplete="off" placeholder="Informe de mediciones eléctricas"></label>
+    <datalist id="dlTipos"><option value="Medición de puesta a tierra"><option value="Verificación de instalación eléctrica"><option value="Medición de resistencia de aislación"><option value="Verificación de protecciones diferenciales"><option value="Medición de impedancia de lazo"><option value="Mediciones para protocolo SRT 900/15"><option value="Informe de mediciones eléctricas"></datalist>
     <div class="grid">
-      <label>Empresa<input data-k="empresa"></label>
-      <label>CUIT<input data-k="cuit" placeholder="ej. 30-12345678-9" inputmode="numeric"></label>
+      <label>Cliente o empresa<input data-k="empresa" list="dlClientes" autocomplete="off" placeholder="Nombre del cliente o razón social"></label>
+      <label>CUIT / DNI<input data-k="cuit" placeholder="ej. 30-12345678-9" inputmode="numeric"></label>
     </div>
     <div class="grid" style="margin-top:12px">
       <label>Obra / instalación<input data-k="obra"></label>
@@ -210,6 +212,7 @@
   <h2><span class="step">5</span> Descargar</h2>
   <div class="row">
     <button class="primary" id="pdfBtn" disabled>Informe PDF</button>
+    <button id="pdfWa" disabled>Enviar por WhatsApp</button>
     <button id="zipBtn" disabled>Todas las pantallas (.zip)</button>
     <button id="csvBtn" disabled>Tabla para Excel (.csv)</button>
   </div>
@@ -716,7 +719,7 @@ function gpsErr(e){
 }
 
 /* ---------- render ---------- */
-function renderAll(){ renderChips(); renderLimits(); renderMeas(); ['#zipBtn','#csvBtn'].forEach(s => $(s).disabled = !state.meas.length); $('#pdfBtn').disabled = !state.meas.length && !state.fotos.length; }
+function renderAll(){ renderChips(); renderLimits(); renderMeas(); ['#zipBtn','#csvBtn'].forEach(s => $(s).disabled = !state.meas.length); $('#pdfWa').disabled = $('#pdfBtn').disabled = !state.meas.length && !state.fotos.length; }
 function renderChips(){
   $('#fileChips').innerHTML = state.files.map(f => `<span class="chip">${esc(f)} <button title="Quitar" data-rm="${esc(f)}">×</button></span>`).join('');
   $('#fileChips').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
@@ -846,10 +849,10 @@ $('#pdfBtn').onclick = async () => {
     y += 15; doc.setDrawColor(225); doc.line(M, y, PW-M, y); y += 2;
   }
   doc.setTextColor(20); doc.setFont('helvetica','bold'); doc.setFontSize(17);
-  doc.text('Informe de mediciones eléctricas', M, y + 8); y += 13;
+  doc.text(pdfSafe(String(r.tipo || '').trim() || 'Informe de mediciones eléctricas'), M, y + 8); y += 13;
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90);
   y += 2;
-  const info = [['Empresa', r.empresa],['CUIT', r.cuit],['Obra / instalación', r.obra],['Dirección', r.direccion],['Fecha de medición', fmtDate(r.fecha)],
+  const info = [['Cliente / empresa', r.empresa],[/^\d{7,8}$/.test(String(r.cuit || '').replace(/\D/g, '')) ? 'DNI' : 'CUIT', r.cuit],['Obra / instalación', r.obra],['Dirección', r.direccion],['Fecha de medición', fmtDate(r.fecha)],
                 ['Técnico responsable', (r.tecnico || '') + (r.matricula ? (r.tecnico ? '  ·  ' : '') + 'Matrícula: ' + r.matricula : '')],
                 ['Equipo de medición', [r.eqNombre, r.eqModelo].filter(Boolean).join(' ')],['N° de serie', r.serie],['Última calibración', r.calibracion]].filter(x => x[1]);
   doc.setDrawColor(225); doc.setFillColor(246,247,249);
@@ -877,7 +880,7 @@ $('#pdfBtn').onclick = async () => {
     if(i % 2){ doc.setFillColor(246,247,249); doc.rect(M, y, PW-2*M, rowH, 'F'); }
     const ev = evaluate(m);
     const sv = summaryVals(m);
-    const cells = [String(i+1), m.func, m.ubic || m.file, sv[0], sv[1], limitText(m), ev.txt];
+    const cells = [String(i+1), m.func, [m.ubic || m.file, m.obs].filter(Boolean).join(' - '), sv[0], sv[1], limitText(m), ev.txt];
     let x = M+2; doc.setFontSize(9);
     cells.forEach((t, k) => {
       if(k === 6){ doc.setTextColor(...(ev.cls==='ok'?[19,122,58]:ev.cls==='bad'?[180,35,24]:[110,110,110])); doc.setFont('helvetica','bold'); }
@@ -910,6 +913,10 @@ $('#pdfBtn').onclick = async () => {
   if(r.observaciones){ need(20); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20); doc.text('Observaciones', M, y+4); y += 9;
     doc.setFont('helvetica','normal'); doc.setFontSize(10); const lines = doc.splitTextToSize(pdfSafe(r.observaciones), PW-2*M); need(lines.length*5); doc.text(lines, M, y); y += lines.length*5 + 4; }
 
+  // fotos: las asociadas a una medición van con su pantalla; el resto, al final
+  const fotosTodas = window.__dt.fotosParaPdf ? await window.__dt.fotosParaPdf() : [];
+  const idsMed = new Set(state.meas.map(m => m.id));
+  const fotosDe = id => fotosTodas.filter(f => f.med && f.med === id);
   // pantallas
   if(state.meas.length){ doc.addPage(); y = M;
     doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20); doc.text('Registro de pantallas del instrumento', M, y+4); y += 10; }
@@ -933,9 +940,18 @@ $('#pdfBtn').onclick = async () => {
     const gu = gpsUrl(m.gps);
     if(gu){ doc.setFontSize(8.5); doc.setTextColor(...blue); doc.textWithLink(pdfSafe('GPS: ' + String(m.gps).replace(/\s*\(.*\)/, '')), tx, ty+14, { url: gu }); }
     y += ih2 + 10;
+    const fm = fotosDe(m.id);
+    if(fm.length){ const cw3 = (PW - 2*M - 8) / 3, mh = 48; let c3 = 0, rh = 0;
+      fm.forEach((f, k) => { let w = cw3, hh = cw3 * f.h / f.w; if(hh > mh){ hh = mh; w = mh * f.w / f.h; }
+        if(c3 === 0){ need(hh + 12); rh = 0; }
+        const x = M + c3 * (cw3 + 4) + (cw3 - w) / 2; try{ doc.addImage(f.data, 'JPEG', x, y, w, hh); }catch(e){}
+        doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(60);
+        const t = doc.splitTextToSize(pdfSafe(f.titulo || 'Foto'), cw3); doc.text(t, M + c3 * (cw3 + 4), y + hh + 4); rh = Math.max(rh, hh + 4 + t.length * 3.6 + 3);
+        if(c3 === 2 || k === fm.length - 1){ y += rh; c3 = 0; } else c3++; });
+      y += 6; }
   }
   // imágenes y fotos
-  const fotos = window.__dt.fotosParaPdf ? await window.__dt.fotosParaPdf() : [];
+  const fotos = fotosTodas.filter(f => !f.med || !idsMed.has(f.med));
   if(fotos.length){
     setMsg('#dlMsg', 'Agregando imágenes…');
     y += 4; need(70);
@@ -967,8 +983,38 @@ $('#pdfBtn').onclick = async () => {
   if(r.matricula) doc.text(pdfSafe('Matrícula: ' + r.matricula), PW-M-35, y+10, {align:'center'});
   if(pf && pf.empresa) doc.text(pdfSafe(pf.empresa), PW-M-35, y + (r.matricula ? 15 : 10), {align:'center'});
   footer();
-  await save(reportName() + '.pdf', doc.output('blob'));
+  const blob = doc.output('blob'), nombre = reportName() + '.pdf';
+  if(window.__pdfCompartir){ window.__pdfCompartir = false; await compartirPdf(blob, nombre); }
+  else await save(nombre, blob);
 };
+/* Enviar el informe por WhatsApp: en el celular comparte el PDF; en la PC lo descarga y abre el chat del cliente */
+function telCliente(){
+  const C = window.__clientes, n = String(state.report.empresa || '').trim().toLowerCase(); if(!C || !n) return '';
+  const c = (C.lista || []).find(x => String(x.nombre || '').trim().toLowerCase() === n); return c && (c.tel || c.telefono) || '';
+}
+async function compartirPdf(blob, nombre){
+  const r = state.report, texto = `Hola${r.empresa ? ' ' + r.empresa : ''}, te envío el informe de mediciones${r.obra ? ' de ' + r.obra : ''}. Cualquier consulta, a disposición. Alexis - BAE Servicios de Instalaciones`;
+  const file = new File([blob], nombre, { type: 'application/pdf' });
+  if(navigator.canShare && navigator.canShare({ files: [file] })){
+    try{ await navigator.share({ files: [file], title: nombre, text: texto }); setMsg('#dlMsg', 'Informe compartido.'); return; }
+    catch(e){ if(e && e.name === 'AbortError'){ setMsg('#dlMsg', ''); return; } }
+  }
+  await save(nombre, blob);
+  const tel = telCliente(), C = window.__clientes;
+  const url = tel && C && C.waLink ? C.waLink(tel, texto) : 'https://wa.me/?text=' + encodeURIComponent(texto);
+  window.open(url, '_blank', 'noopener');
+  setMsg('#dlMsg', 'Descargué el PDF y abrí WhatsApp: adjuntalo en el chat.');
+}
+$('#pdfWa').onclick = () => { window.__pdfCompartir = true; $('#pdfBtn').click(); };
+// Al elegir un cliente de la agenda, completa CUIT y dirección si están vacíos
+{ const inp = document.querySelector('#reportForm [data-k="empresa"]');
+  if(inp) inp.addEventListener('change', () => {
+    const C = window.__clientes, n = inp.value.trim().toLowerCase(); if(!C || !n) return;
+    const c = (C.lista || []).find(x => String(x.nombre || '').trim().toLowerCase() === n); if(!c) return;
+    [['cuit', c.cuit], ['direccion', [c.direccion, c.localidad].filter(Boolean).join(', ')]].forEach(([k, v]) => {
+      const el = document.querySelector(`#reportForm [data-k="${k}"]`); if(el && v && !el.value.trim()){ el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+  }); }
 
 // redibujar al cargar la tipografía
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if(state.meas.length) renderMeas(); });
@@ -1113,7 +1159,7 @@ window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles, 
 <script src="srt.js?v=19"></script>
 <script src="precios-ref.js?v=1"></script>
 <script src="presu.js?v=17"></script>
-<script src="informes.js?v=6"></script>
+<script src="informes.js?v=8"></script>
 <script src="clientes.js?v=3"></script>
 <script src="calc.js?v=1"></script>
 <script src="gas.js?v=3"></script>

@@ -12,7 +12,7 @@ const store = { get(k, d){ try{ const x = localStorage.getItem(k); return x ? JS
 const p2 = n => String(n).padStart(2, '0');
 const fmtD = iso => { const p = String(iso || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : (iso || ''); };
 const sinAcentos = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const CLIENTE = ['empresa', 'cuit', 'obra', 'direccion', 'observaciones'];
+const CLIENTE = ['tipo', 'empresa', 'cuit', 'obra', 'direccion', 'observaciones'];
 const CARPETA = 'BAE Informes';
 
 let lista = store.get('bae.inf.lista', []);
@@ -20,17 +20,18 @@ let borrados = store.get('bae.inf.borrados', []);
 let actualId = store.get('bae.inf.actual', null) || ('i' + Date.now());
 
 /* ---------- formulario <-> estado ---------- */
+const hoyLocal = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 function ponerReporte(rep){
   $$('#reportForm [data-k], textarea[data-k]').forEach(el => {
     const k = el.dataset.k; if(!CLIENTE.includes(k) && k !== 'fecha') return;
-    el.value = rep[k] || (k === 'fecha' ? new Date().toISOString().slice(0, 10) : '');
+    el.value = rep[k] || (k === 'fecha' ? hoyLocal() : '');
     S.report[k] = el.value;
   });
 }
 if(!Array.isArray(S.fotos)) S.fotos = [];
 const foto = () => ({ report: Object.fromEntries(CLIENTE.concat('fecha').map(k => [k, S.report[k] || ''])), meas: S.meas, files: S.files, fotos: S.fotos, firmaCliente: S.firmaCliente || null });
 const vacio = () => !S.meas.length && !S.fotos.length && !CLIENTE.some(k => String(S.report[k] || '').trim());
-const titulo = x => [x.report && x.report.empresa || 'Sin empresa', x.report && x.report.obra].filter(Boolean).join(' · ');
+const titulo = x => [x.report && x.report.empresa || 'Sin cliente', x.report && x.report.obra].filter(Boolean).join(' · ');
 
 function limites(){
   S.meas.forEach(m => { const L = S.limits[m.func];
@@ -58,7 +59,7 @@ window.addEventListener('pagehide', guardarBorrador);
 
 /* ---------- guardar / abrir ---------- */
 function guardar(){
-  if(vacio()) return msg('Cargá al menos la empresa o una medición antes de guardar.', true), false;
+  if(vacio()) return msg('Cargá al menos el cliente o una medición antes de guardar.', true), false;
   const rec = Object.assign({ id: actualId }, JSON.parse(JSON.stringify(foto())), { _mod: Date.now(), _dirty: true, n: S.meas.length, nf: S.fotos.length });
   const i = lista.findIndex(x => x.id === actualId);
   if(i >= 0){ rec._driveId = lista[i]._driveId; lista[i] = rec; } else lista.push(rec);
@@ -123,7 +124,7 @@ function nubeHTML(){
 function filaHTML(x){
   const r = x.report || {}, q = sinAcentos([r.empresa, r.obra, r.direccion, r.cuit, fmtD(r.fecha)].join(' ')), n = x.n ?? (x.meas || []).length;
   return `<div class="if-row${x.id === actualId ? ' actual' : ''}" data-q="${esc(q)}" data-iabrir="${x.id}" role="button" tabindex="0" title="Abrir">
-    <div class="info"><b>${esc(r.empresa || 'Sin empresa')}${x.id === actualId ? ' <em>abierto</em>' : ''}</b>${r.obra ? `<span>${esc(r.obra)}</span>` : ''}
+    <div class="info"><b>${esc(r.empresa || 'Sin cliente')}${x.id === actualId ? ' <em>abierto</em>' : ''}</b>${r.obra ? `<span>${esc(r.obra)}</span>` : ''}
     <span class="meta">${esc(fmtD(r.fecha) || 'Sin fecha')} · ${n} medición${n === 1 ? '' : 'es'}${(x.nf ?? (x.fotos || []).length) ? ' · ' + (x.nf ?? x.fotos.length) + ' imagen' + ((x.nf ?? x.fotos.length) === 1 ? '' : 'es') : ''}</span></div>
     <div class="acts"><button data-idup="${x.id}" title="Nuevo informe para el mismo cliente, sin mediciones">Repetir</button><button data-iborrar="${x.id}" title="Borrar" aria-label="Borrar">✕</button></div></div>`;
 }
@@ -265,7 +266,7 @@ DT.fotosParaPdf = async () => {
     const b = await blobFoto(f.id).catch(() => null); if(!b) continue;
     const data = await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(b); });
     const dim = await new Promise(ok => { const im = new Image(); im.onload = () => ok({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => ok({ w: 4, h: 3 }); im.src = data; });
-    out.push(Object.assign({ titulo: f.titulo, data }, dim));
+    out.push(Object.assign({ titulo: f.titulo, med: f.med || '', data }, dim));
   }
   return out;
 };
@@ -282,6 +283,7 @@ fcss.textContent = `
   #infFotos .fx{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
   #infFotos .fx .img{aspect-ratio:4/3;background:var(--neutral-bg) center/cover no-repeat;display:grid;place-items:center;color:var(--muted);font-size:12px}
   #infFotos .fx input{border:none;border-top:1px solid var(--line);border-radius:0;margin:0;padding:8px 10px;font-size:13px;width:100%;box-sizing:border-box}
+  #infFotos .fx select{border:none;border-top:1px solid var(--line);border-radius:0;margin:0;padding:7px 8px;font-size:12.5px;width:100%;background:var(--neutral-bg);color:var(--ink)}
   #infFotos .fx .x{position:absolute;top:6px;right:6px;width:28px;height:28px;padding:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;font-size:14px;line-height:1}
   #infFotos .vacio{font-size:13px;color:var(--muted);margin:6px 0 0}`;
 document.head.appendChild(fcss);
@@ -291,7 +293,7 @@ function renderFotos(){
   fcard.innerHTML = `<div class="fx-top"><h2><span class="step">5</span> Imágenes</h2><div class="fx-btns"><button id="fxTel" title="Desde el teléfono o la PC">+ Agregar</button><button id="fxDrive" title="Desde Google Drive">Drive</button></div></div>
     <input type="file" id="fxIn" accept="image/*" multiple hidden>
     ${S.fotos.length ? '' : '<p class="vacio">Sumá fotos de la obra o capturas de pantalla. Salen en el PDF con su título.</p>'}
-    <div class="fx-grid">${S.fotos.map((f, i) => `<div class="fx"><div class="img" data-fimg="${i}">…</div><button class="x" data-fdel="${i}" title="Quitar" aria-label="Quitar">✕</button><input data-ftit="${i}" value="${esc(f.titulo)}" placeholder="Título"></div>`).join('')}</div>`;
+    <div class="fx-grid">${S.fotos.map((f, i) => `<div class="fx"><div class="img" data-fimg="${i}">…</div><button class="x" data-fdel="${i}" title="Quitar" aria-label="Quitar">✕</button><input data-ftit="${i}" value="${esc(f.titulo)}" placeholder="Título">${S.meas.length ? `<select data-fmed="${i}" title="Medición asociada"><option value="">Sin medición asociada</option>${S.meas.map((m, k) => `<option value="${esc(m.id)}" ${f.med === m.id ? 'selected' : ''}>Con la medición ${k + 1}: ${esc(m.func)}${m.ubic ? ' – ' + esc(m.ubic) : ''}</option>`).join('')}</select>` : ''}</div>`).join('')}</div>`;
   const inp = $('#fxIn', fcard);
   $('#fxTel', fcard).onclick = () => inp.click();
   inp.onchange = () => { const l = [...inp.files]; inp.value = ''; agregarImagenes(l); };
@@ -301,6 +303,7 @@ function renderFotos(){
     catch(e){ decirCarga('No se pudo cargar desde Drive: ' + e.message + '.', true); }
   };
   $$('[data-ftit]', fcard).forEach(el => el.oninput = () => { S.fotos[+el.dataset.ftit].titulo = el.value; });
+  $$('[data-fmed]', fcard).forEach(el => el.onchange = () => { S.fotos[+el.dataset.fmed].med = el.value; guardarBorrador(); });
   $$('[data-fdel]', fcard).forEach(b => b.onclick = () => { S.fotos.splice(+b.dataset.fdel, 1); guardarBorrador(); renderFotos(); DT.renderAll(); });
   S.fotos.forEach(async (f, i) => {
     const el = $(`[data-fimg="${i}"]`, fcard); if(!el) return;
@@ -444,7 +447,7 @@ function renderCierre(){
   const st = document.getElementById('pdfBtn').closest('section.card').querySelector('.step'); if(st) st.textContent = '7';
 }
 // el dictamen se actualiza cuando cambian mediciones o límites
-{ let t = null; const ob = new MutationObserver(() => { clearTimeout(t); t = setTimeout(() => { try{ renderCierre(); }catch(e){} }, 120); });
+{ let t = null, nMed = -1; const ob = new MutationObserver(() => { clearTimeout(t); t = setTimeout(() => { try{ renderCierre(); }catch(e){} if(S.meas.length !== nMed){ nMed = S.meas.length; try{ renderFotos(); }catch(e){} } }, 120); });
   ['measList', 'limitsBox'].forEach(id => { const el = document.getElementById(id); if(el) ob.observe(el, { childList: true }); }); }
 document.addEventListener('input', e => { if(e.target.closest && e.target.closest('#limitsBox, .limits')) setTimeout(renderCierre, 0); });
 document.addEventListener('change', e => { if(e.target.closest && e.target.closest('#limitsBox, .limits')) setTimeout(renderCierre, 0); });
@@ -495,7 +498,11 @@ function nuevoPara(c){
 
 /* el PDF del informe también lo guarda */
 document.addEventListener('click', e => { if(e.target && e.target.id === 'pdfBtn' && !vacio()){ guardarBorrador(); if(guardar()){ render(); sincronizar(true); } } }, true);
-window.addEventListener('hashchange', () => { if(location.hash === '#informe'){ render(); sincronizar(false); } });
+// borrador vacío de otro día: arranca con la fecha de hoy
+function fechaHoy(){ const hoy = hoyLocal(), el = document.querySelector('#reportForm [data-k="fecha"]');
+  if(el && vacio() && S.report.fecha !== hoy){ el.value = hoy; S.report.fecha = hoy; guardarBorrador(); } }
+fechaHoy();
+window.addEventListener('hashchange', () => { if(location.hash === '#informe'){ fechaHoy(); render(); sincronizar(false); } });
 window.addEventListener('online', () => sincronizar(false));
 if(N) N.onCambio(() => { if(location.hash === '#informe') render(); });
 
