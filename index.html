@@ -193,7 +193,8 @@
     </div>
     <div class="fijos" id="infFijos" style="margin-top:12px"></div>
   </div>
-  <label style="margin-top:12px">Observaciones generales<textarea data-k="observaciones" style="font-family:inherit;min-height:70px"></textarea></label>
+  <label style="margin-top:12px">Observaciones generales<textarea data-k="observaciones" style="font-family:inherit;min-height:70px" placeholder="Qué se encontró: estado de la instalación, causas, valores medidos…"></textarea></label>
+  <label style="margin-top:12px">Conclusiones y recomendaciones<textarea data-k="conclusion" style="font-family:inherit;min-height:70px" placeholder="Solución propuesta, mejoras a realizar, trabajos pendientes…"></textarea></label>
   <p class="note">Tus datos y los del equipo son fijos (se ven en Inicio → Mis datos).</p>
 </section>
 
@@ -858,14 +859,15 @@ $('#pdfBtn').onclick = async () => {
                 ['Técnico responsable', (r.tecnico || '') + (r.matricula ? (r.tecnico ? '  ·  ' : '') + 'Matrícula: ' + r.matricula : '')],
                 ...(window.__dt.instrumentos ? window.__dt.instrumentos() : []).map((x, k, a) => [k === 0 ? (a.length > 1 ? 'Instrumentos' : 'Instrumento') : '', [x.nombre, x.serie ? 'N° ' + x.serie : '', x.cal ? 'Cal. ' + x.cal : ''].filter(Boolean).join(' · ')])].filter(x => x[1]);
   doc.setDrawColor(225); doc.setFillColor(246,247,249);
-  const ih = info.length * 6 + 6; doc.roundedRect(M, y, PW-2*M, ih, 2, 2, 'F'); y += 7;
   doc.setFontSize(10);
-  info.forEach(([k,v]) => {
+  const anchoV = PW - 2*M - 50 - 4, lineas = info.map(([k, v]) => k === 'Ubicación GPS' ? [pdfSafe(v)] : doc.splitTextToSize(pdfSafe(v), anchoV));
+  const ih = lineas.reduce((a, l) => a + 6 + (l.length - 1) * 4.6, 0) + 6; doc.roundedRect(M, y, PW-2*M, ih, 2, 2, 'F'); y += 7;
+  info.forEach(([k,v], n) => {
     doc.setTextColor(110); doc.text(pdfSafe(k), M+4, y);
     const u = k === 'Ubicación GPS' ? gpsUrl(v) : '';
     if(u){ doc.setTextColor(...blue); doc.textWithLink(pdfSafe(v) + '  (ver en el mapa)', M+50, y, { url: u }); }
-    else { doc.setTextColor(20); doc.text(pdfSafe(v), M+50, y); }
-    y += 6;
+    else { doc.setTextColor(20); doc.text(lineas[n], M+50, y, { lineHeightFactor: 1.3 }); }
+    y += 6 + (lineas[n].length - 1) * 4.6;
   });
   y += 6;
 
@@ -914,6 +916,8 @@ $('#pdfBtn').onclick = async () => {
   }
   if(r.observaciones){ need(20); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20); doc.text('Observaciones', M, y+4); y += 9;
     doc.setFont('helvetica','normal'); doc.setFontSize(10); const lines = doc.splitTextToSize(pdfSafe(r.observaciones), PW-2*M); need(lines.length*5); doc.text(lines, M, y); y += lines.length*5 + 4; }
+  if(r.conclusion){ need(20); y += 2; doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20); doc.text('Conclusiones y recomendaciones', M, y+4); y += 9;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); const lines = doc.splitTextToSize(pdfSafe(r.conclusion), PW-2*M); need(lines.length*5); doc.text(lines, M, y); y += lines.length*5 + 4; }
 
   // fotos: las asociadas a una medición van con su pantalla; el resto, al final
   const fotosTodas = window.__dt.fotosParaPdf ? await window.__dt.fotosParaPdf() : [];
@@ -1161,7 +1165,7 @@ window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles, 
 <script src="srt.js?v=20"></script>
 <script src="precios-ref.js?v=1"></script>
 <script src="presu.js?v=17"></script>
-<script src="informes.js?v=9"></script>
+<script src="informes.js?v=10"></script>
 <script src="clientes.js?v=3"></script>
 <script src="calc.js?v=1"></script>
 <script src="gas.js?v=3"></script>

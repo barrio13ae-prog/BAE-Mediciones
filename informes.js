@@ -12,7 +12,7 @@ const store = { get(k, d){ try{ const x = localStorage.getItem(k); return x ? JS
 const p2 = n => String(n).padStart(2, '0');
 const fmtD = iso => { const p = String(iso || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : (iso || ''); };
 const sinAcentos = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const CLIENTE = ['tipo', 'empresa', 'cuit', 'obra', 'direccion', 'observaciones'];
+const CLIENTE = ['tipo', 'empresa', 'cuit', 'obra', 'direccion', 'observaciones', 'conclusion'];
 const CARPETA = 'BAE Informes';
 var insListo = false;   // el módulo de instrumentos se arma más abajo
 
