@@ -106,7 +106,7 @@ function placeBt(k){
 const VIEWS = {
   inicio: { el: vHome, title: 'Hola, Alexis 👋', sub: '¿Qué hacemos hoy?' },
   vivo: { el: vVivo, title: 'Multifunción CEM en vivo', sub: 'Mirá la pantalla del DT-6650 en el teléfono y capturala, sin armar un informe.' },
-  informe: { el: vInf, title: 'Informe de mediciones CEM DT-6650', sub: 'Cargá los archivos .txt del equipo y obtené la imagen de cada pantalla y el informe en PDF.' },
+  informe: { el: vInf, title: 'Informes', sub: 'Cargá mediciones e imágenes desde tus archivos, Drive o el equipo por Bluetooth, y armá el informe en PDF.' },
   srt: { el: vSrt, title: 'Protocolo de PAT — Res. SRT 900/15', sub: 'Cargá las mediciones y descargá el formulario oficial completo.' },
   pat: { el: vPat, title: 'Diseño de puesta a tierra', sub: 'Resistividad por Wenner (SEW 4235 ER) y selección de la PAT según AEA 90364.' }
 };
@@ -148,7 +148,7 @@ function syncInforme(){
 const LOGO = (window.BAE_LOGO ? window.BAE_LOGO.mark.replace('<svg ', '<svg width="44" height="44" aria-hidden="true" ') : '');
 header.innerHTML = `<div class="brand">${LOGO}<div><div class="bname" id="bName"></div><div class="bcred" id="bCred"></div></div></div>
   <h1 id="appTitle"></h1><p id="appSub"></p>
-  <nav class="tabs"><a href="#inicio" data-v="inicio">Inicio</a><a href="#vivo" data-v="vivo">Ver multifunción CEM</a><a href="#informe" data-v="informe">Informe DT-6650</a><a href="#srt" data-v="srt">Protocolo SRT 900/15</a><a href="#pat" data-v="pat">Diseño de PAT</a><a href="#gas" data-v="gas">Gas NAG-200</a></nav>
+  <nav class="tabs"><a href="#inicio" data-v="inicio">Inicio</a><a href="#vivo" data-v="vivo">Ver multifunción CEM</a><a href="#informe" data-v="informe">Informes</a><a href="#srt" data-v="srt">Protocolo SRT 900/15</a><a href="#pat" data-v="pat">Diseño de PAT</a><a href="#gas" data-v="gas">Gas NAG-200</a></nav>
   <a class="back" id="backHome" href="#inicio">← Inicio</a>`;
 function renderBrand(){ $('#bName').textContent = perfil.empresa || 'BAE Servicios de Instalaciones'; $('#bCred').textContent = [perfil.nombre, ...credenciales()].filter(Boolean).join(' · '); }
 renderBrand(); syncInforme();
@@ -171,7 +171,7 @@ window.addEventListener('hashchange', route);
 /* ================= inicio ================= */
 vHome.innerHTML = `<nav class="tiles" aria-label="Funciones">
   <a class="tile" href="#vivo"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2.5" width="16" height="19" rx="2.5"/><rect x="7" y="5.5" width="10" height="7" rx="1"/><path d="M9.5 9.5l1.5-2 1.5 3 1.5-2"/><circle cx="9" cy="17" r="1.3"/><circle cx="15" cy="17" r="1.3"/></svg></div><b>Ver multifunción CEM</b><span>Pantalla del DT-6650 en vivo por Bluetooth y captura en imagen.</span></a>
-  <a class="tile" href="#informe"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5"/><path d="M8 13h8M8 17h5"/></svg></div><b>Informe DT-6650</b><span>Mediciones, límites e informe en PDF.</span></a>
+  <a class="tile" href="#informe"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5"/><path d="M8 13h8M8 17h5"/></svg></div><b>Informes</b><span>Mediciones, imágenes, dictamen y PDF.</span></a>
   <a class="tile" href="#srt"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="18" rx="2"/><path d="M9 3.5V2.5h6v1"/><path d="M8.5 11l2 2 4-4"/><path d="M8.5 17h7"/></svg></div><b>Protocolo SRT 900/15</b><span>PAT, continuidad y diferenciales. Formulario oficial.</span></a>
   <a class="tile" href="#pat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5v11"/><path d="M5 13.5h14"/><path d="M7.5 17h9"/><path d="M10 20.5h4"/></svg></div><b>Diseño de PAT</b><span>Resistividad Wenner y selección de la puesta a tierra.</span></a>
   <a class="tile" href="#presu"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></div><b>Presupuestos</b><span>Mano de obra, materiales y condiciones, en PDF.</span></a>
@@ -423,7 +423,7 @@ function buildSrt(){
     <label class="chk" style="margin-top:10px"><input type="checkbox" data-p="med.croquis"> Se adjunta plano o croquis con las tomas numeradas (15)</label>
   </section>
   <section class="card"><h2><span class="step">3</span> Importar del DT-6650</h2>
-    <p class="hint" style="margin-top:0">Toma las mediciones cargadas en <a href="#informe">Informe DT-6650</a>: cada EARTH pasa como toma de tierra (al 62 %), cada RCD como diferencial y cada LOW OHM como continuidad. Las ya importadas no se repiten.</p>
+    <p class="hint" style="margin-top:0">Toma las mediciones cargadas en <a href="#informe">Informes</a>: cada EARTH pasa como toma de tierra (al 62 %), cada RCD como diferencial y cada LOW OHM como continuidad. Las ya importadas no se repiten.</p>
     <div class="row" style="margin-top:10px"><button id="srtImport">Importar mediciones</button><span class="msg" id="impMsg" style="margin:0"></span></div>
   </section>
   <section class="card"><h2><span class="step">4</span> Tomas de tierra (ítems 22 a 32)</h2>
@@ -558,7 +558,7 @@ function renderSrtAll(){
 /* importación desde el informe DT-6650 */
 function importDT(){
   const meas = (DT.state && DT.state.meas) || [];
-  if(!meas.length){ setMsg('#impMsg', 'No hay mediciones cargadas en "Informe DT-6650".', true); return; }
+  if(!meas.length){ setMsg('#impMsg', 'No hay mediciones cargadas en "Informes".', true); return; }
   let nt = 0, nc = 0, nd = 0;
   const done = new Set(srt.imported || []);
   meas.forEach(m => {
