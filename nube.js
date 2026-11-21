@@ -3,9 +3,8 @@
 'use strict';
 const CLIENT_ID = '1016468287608-ec3tv211ih3bicr7eb1sqj6okh947rqt.apps.googleusercontent.com';
 const DOMINIO = 'baeinstalaciones.com.ar';
-const API_KEY = 'AIzaSyCFrDSTSzB5qXqjJ8fILeTLTj3C4xjxraU';   // solo Google Picker, restringida a los sitios de la app
-const APP_ID = '1016468287608';                              // número del proyecto de Google Cloud
-const SCOPES = 'openid email https://www.googleapis.com/auth/drive.file';
+const SCOPES = 'openid email https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
+const LECTURA = 'https://www.googleapis.com/auth/drive.readonly';   // para elegir archivos propios de Drive desde la app
 const CARPETA = 'BAE Presupuestos';
 const API = 'https://www.googleapis.com/drive/v3';
 const UP = 'https://www.googleapis.com/upload/drive/v3';
@@ -42,7 +41,7 @@ function cliente(){
     client_id: CLIENT_ID, scope: SCOPES, hd: DOMINIO, login_hint: auth && auth.email || undefined,
     callback: r => {
       const cola = esperando; esperando = [];
-      if(r && r.access_token){ tok = { t: r.access_token, exp: Date.now() + (r.expires_in || 3600) * 1000 }; ss.set('bae.tok', tok); cola.forEach(c => c.ok(tok.t)); }
+      if(r && r.access_token){ tok = { t: r.access_token, exp: Date.now() + (r.expires_in || 3600) * 1000, sc: r.scope || '' }; ss.set('bae.tok', tok); cola.forEach(c => c.ok(tok.t)); }
       else cola.forEach(c => c.mal(new Error(r && r.error || 'no autorizado')));
       avisar();
     },
@@ -51,10 +50,10 @@ function cliente(){
   return client;
 }
 /* Pide un token. Debe llamarse desde un toque del usuario (si no, el navegador bloquea la ventana). */
-function pedirToken(elegirCuenta){
-  if(tokenOk()) return Promise.resolve(tok.t);
+function pedirToken(elegirCuenta, alcance){
+  if(tokenOk() && (!alcance || (tok.sc || '').includes(alcance))) return Promise.resolve(tok.t);
   if(!(window.google && google.accounts && google.accounts.oauth2)) return cargarGsi().then(() => Promise.reject(new Error('Google recién terminó de cargar: tocá de nuevo')));
-  return new Promise((ok, mal) => { esperando.push({ ok, mal }); cliente().requestAccessToken({ prompt: elegirCuenta ? 'select_account' : '' }); });
+  return new Promise((ok, mal) => { esperando.push({ ok, mal }); cliente().requestAccessToken({ prompt: elegirCuenta ? 'select_account' : alcance && tokenOk() ? 'consent' : '' }); });
 }
 
 /* ---------- pantalla de ingreso ---------- */
@@ -181,36 +180,99 @@ async function sincronizarColeccion(o){
   return cambio;
 }
 
-/* ---------- selector de archivos de Drive (Google Picker) ---------- */
-let pickerPromesa = null;
-function cargarPicker(){
-  if(window.google && google.picker) return Promise.resolve();
-  if(pickerPromesa) return pickerPromesa;
-  pickerPromesa = new Promise((ok, mal) => {
-    const fin = () => gapi.load('picker', { callback: ok, onerror: () => { pickerPromesa = null; mal(new Error('no cargó el selector de Google')); } });
-    if(window.gapi && gapi.load) return fin();
-    const s = document.createElement('script'); s.src = 'https://apis.google.com/js/api.js'; s.async = true;
-    s.onload = fin; s.onerror = () => { pickerPromesa = null; mal(new Error('sin conexión con Google')); };
-    document.head.appendChild(s);
-  });
-  return pickerPromesa;
+/* ---------- selector de archivos de Drive (propio, sin Google Picker: funciona en Brave y no abre ventanas) ---------- */
+const CARP = 'application/vnd.google-apps.folder';
+const fmtTam = n => !n ? '' : n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
+const fmtFecha = d => { try{ return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }); }catch(e){ return ''; } };
+const escH = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let cssSel = false;
+function estilosSel(){
+  if(cssSel) return; cssSel = true;
+  const c = document.createElement('style');
+  c.textContent = `.dsel{position:fixed;inset:0;z-index:9998;background:rgba(10,22,28,.55);display:grid;place-items:center;padding:16px}
+  .dsel .box{background:var(--card,#fff);color:var(--ink,#0f2733);width:min(640px,100%);max-height:min(720px,100%);display:flex;flex-direction:column;border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  .dsel header{display:flex;align-items:center;gap:10px;padding:14px 16px 8px}
+  .dsel header b{flex:1;font-size:16px}
+  .dsel .x{border:0;background:none;font-size:22px;line-height:1;padding:4px 8px;cursor:pointer;color:inherit}
+  .dsel .tabs2{display:flex;gap:6px;padding:0 16px 8px;flex-wrap:wrap}
+  .dsel .tabs2 button{border:1px solid var(--line,#d5e0e5);background:none;border-radius:999px;padding:6px 12px;font-size:13.5px;cursor:pointer;color:inherit}
+  .dsel .tabs2 button.on{background:var(--accent,#0f2733);color:var(--accent-ink,#fff);border-color:var(--accent,#0f2733)}
+  .dsel .bus{padding:0 16px 8px}.dsel .bus input{width:100%;margin:0}
+  .dsel .ruta{padding:2px 16px 8px;font-size:13px;color:var(--muted,#4a5d66);display:flex;flex-wrap:wrap;gap:4px}
+  .dsel .ruta a{color:inherit;cursor:pointer;text-decoration:underline}
+  .dsel ul{list-style:none;margin:0;padding:0 8px;overflow:auto;flex:1;min-height:160px;border-top:1px solid var(--line,#d5e0e5);border-bottom:1px solid var(--line,#d5e0e5)}
+  .dsel li{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:10px;cursor:pointer}
+  .dsel li:hover{background:var(--neutral-bg,#e4ecf0)}
+  .dsel li.sel{background:color-mix(in srgb,var(--accent,#0f2733) 14%,transparent)}
+  .dsel li .ico{width:34px;height:34px;flex:none;border-radius:8px;display:grid;place-items:center;font-size:18px;background:var(--neutral-bg,#e4ecf0);overflow:hidden}
+  .dsel li .ico img{width:100%;height:100%;object-fit:cover}
+  .dsel li .nm{flex:1;min-width:0}.dsel li .nm b{display:block;font-weight:600;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dsel li .nm span{font-size:12.5px;color:var(--muted,#4a5d66)}
+  .dsel li input{width:20px;height:20px;margin:0;flex:none}
+  .dsel .vacio{padding:24px 12px;text-align:center;color:var(--muted,#4a5d66);list-style:none}
+  .dsel footer{display:flex;gap:10px;align-items:center;padding:12px 16px}
+  .dsel footer span{flex:1;font-size:13.5px;color:var(--muted,#4a5d66)}
+  @media (max-width:560px){ .dsel{padding:0} .dsel .box{border-radius:0;height:100%;max-height:none} }`;
+  document.head.appendChild(c);
 }
-/* Abre el selector y devuelve [{ name, arrayBuffer() }] de los archivos elegidos. Llamar desde un toque del usuario. */
+/* Abre el selector y devuelve [{ name, id, type, arrayBuffer() }] de los archivos elegidos. Llamar desde un toque del usuario. */
 function elegirArchivos({ mimes = 'text/plain', titulo = 'Elegí los archivos' } = {}){
-  const tokenP = pedirToken(false);            // primero, dentro del toque, para que no se bloquee la ventana
-  return Promise.all([tokenP, cargarPicker()]).then(([t]) => new Promise((ok, mal) => {
-    const P = google.picker;
-    const vista = new P.DocsView(P.ViewId.DOCS).setMimeTypes(mimes).setIncludeFolders(true).setSelectFolderEnabled(false).setMode(P.DocsViewMode.LIST);
-    const recientes = new P.DocsView(P.ViewId.RECENTLY_PICKED);
-    new P.PickerBuilder().setTitle(titulo).setLocale('es').addView(vista).addView(recientes)
-      .enableFeature(P.Feature.MULTISELECT_ENABLED).setOAuthToken(t).setDeveloperKey(API_KEY).setAppId(APP_ID)
-      .setCallback(d => {
-        const acc = d[P.Response.ACTION];
-        if(acc === P.Action.CANCEL) return ok([]);
-        if(acc !== P.Action.PICKED) return;
-        ok((d[P.Response.DOCUMENTS] || []).map(doc => ({ name: doc[P.Document.NAME], id: doc[P.Document.ID],
-          arrayBuffer: async () => (await api(`${API}/files/${doc[P.Document.ID]}?alt=media`)).arrayBuffer() })));
-      }).build().setVisible(true);
+  const tokenP = pedirToken(false, LECTURA);   // primero, dentro del toque, para que no se bloquee la ventana de permisos
+  const tipos = mimes.split(',').map(x => x.trim()).filter(Boolean);
+  const quiereTxt = tipos.some(t => /text|octet/.test(t)), quiereImg = tipos.some(t => /^image\//.test(t));
+  const sirve = f => f.mimeType === CARP || (quiereImg && /^image\//.test(f.mimeType)) || (quiereTxt && (/^text\//.test(f.mimeType) || /\.txt$/i.test(f.name)));
+  return tokenP.then(() => new Promise(ok => {
+    estilosSel();
+    const scrollY = window.scrollY;
+    const el = document.createElement('div'); el.className = 'dsel';
+    el.innerHTML = `<div class="box" role="dialog" aria-label="${escH(titulo)}">
+      <header><b>${escH(titulo)}</b><button class="x" data-a="cerrar" aria-label="Cerrar">×</button></header>
+      <div class="tabs2"><button data-v="raiz" class="on">Mi unidad</button><button data-v="rec">Recientes</button><button data-v="comp">Compartidos conmigo</button></div>
+      <div class="bus"><input type="search" placeholder="Buscar en Drive por nombre"></div>
+      <div class="ruta"></div><ul></ul>
+      <footer><span>Tocá para marcar.</span><button data-a="cerrar">Cancelar</button><button class="primary" data-a="ok" disabled>Cargar</button></footer></div>`;
+    document.body.appendChild(el); document.documentElement.style.overflow = 'hidden';
+    const ul = el.querySelector('ul'), ruta = el.querySelector('.ruta'), bOk = el.querySelector('[data-a="ok"]'), inp = el.querySelector('input');
+    const elegidos = new Map(); let pila = [{ id: 'root', name: 'Mi unidad' }], modo = 'raiz', pedido = 0;
+    const cerrar = res => { el.remove(); document.documentElement.style.overflow = ''; window.scrollTo(0, scrollY); ok(res); };
+    const actualizarBoton = () => { const n = elegidos.size; bOk.disabled = !n; bOk.textContent = n ? `Cargar ${n} archivo${n > 1 ? 's' : ''}` : 'Cargar'; };
+    async function cargarLista(){
+      const yo = ++pedido; ul.innerHTML = '<li class="vacio">Cargando…</li>';
+      const txt = inp.value.trim().replace(/['\\]/g, '');
+      let q = 'trashed=false', orden = 'folder,name';
+      if(txt){ q += ` and name contains '${txt}'`; orden = 'modifiedTime desc'; }
+      else if(modo === 'rec'){ q += ` and mimeType!='${CARP}'`; orden = 'modifiedTime desc'; }
+      else if(modo === 'comp'){ q += ' and sharedWithMe'; orden = 'modifiedTime desc'; }
+      else q += ` and '${pila[pila.length - 1].id}' in parents`;
+      ruta.innerHTML = txt ? `Resultados para “${escH(txt)}”` : modo === 'raiz' ? pila.map((c, i) => i < pila.length - 1 ? `<a data-i="${i}">${escH(c.name)}</a> ›` : `<b>${escH(c.name)}</b>`).join(' ') : modo === 'rec' ? 'Archivos modificados últimamente' : 'Archivos que otros compartieron con vos';
+      try{
+        const url = `${API}/files?q=${encodeURIComponent(q)}&orderBy=${encodeURIComponent(orden)}&pageSize=200&fields=${encodeURIComponent('files(id,name,mimeType,size,modifiedTime,thumbnailLink)')}&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+        const r = await (await api(url)).json(); if(yo !== pedido) return;
+        const fs = (r.files || []).filter(sirve);
+        ul.innerHTML = fs.length ? fs.map(f => { const dir = f.mimeType === CARP, img = /^image\//.test(f.mimeType);
+          return `<li data-id="${escH(f.id)}" data-dir="${dir ? 1 : ''}" class="${elegidos.has(f.id) ? 'sel' : ''}"><div class="ico">${dir ? '📁' : img && f.thumbnailLink ? `<img src="${escH(f.thumbnailLink)}" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith('🖼️')">` : img ? '🖼️' : '📄'}</div>
+          <div class="nm"><b>${escH(f.name)}</b><span>${dir ? 'Carpeta' : [fmtTam(+f.size), fmtFecha(f.modifiedTime)].filter(Boolean).join(' · ')}</span></div>${dir ? '<span aria-hidden="true">›</span>' : `<input type="checkbox" tabindex="-1" ${elegidos.has(f.id) ? 'checked' : ''}>`}</li>`; }).join('')
+          : `<li class="vacio">${txt ? 'No encontré archivos con ese nombre.' : 'No hay archivos que se puedan cargar acá.'}</li>`;
+        fs.forEach(f => { if(f.mimeType !== CARP) mapa[f.id] = f; });
+      }catch(e){ if(yo === pedido) ul.innerHTML = `<li class="vacio">No se pudo leer Drive: ${escH(e.message)}.</li>`; }
+    }
+    const mapa = {};
+    el.addEventListener('click', e => {
+      const a = e.target.closest('[data-a]'); if(a){ if(a.dataset.a === 'cerrar') return cerrar([]);
+        const docs = [...elegidos.values()].map(f => ({ name: f.name, id: f.id, type: f.mimeType, arrayBuffer: async () => (await api(`${API}/files/${f.id}?alt=media&supportsAllDrives=true`)).arrayBuffer() }));
+        return cerrar(docs); }
+      const t = e.target.closest('.tabs2 button'); if(t){ el.querySelectorAll('.tabs2 button').forEach(b => b.classList.toggle('on', b === t)); modo = t.dataset.v; inp.value = ''; if(modo === 'raiz') pila = [pila[0]]; return cargarLista(); }
+      const r = e.target.closest('.ruta a'); if(r){ pila = pila.slice(0, +r.dataset.i + 1); return cargarLista(); }
+      const li = e.target.closest('li[data-id]'); if(!li) return;
+      if(li.dataset.dir){ inp.value = ''; modo = 'raiz'; el.querySelectorAll('.tabs2 button').forEach(b => b.classList.toggle('on', b.dataset.v === 'raiz')); pila.push({ id: li.dataset.id, name: li.querySelector('b').textContent }); return cargarLista(); }
+      const f = mapa[li.dataset.id]; if(!f) return;
+      if(elegidos.has(f.id)) elegidos.delete(f.id); else elegidos.set(f.id, f);
+      li.classList.toggle('sel', elegidos.has(f.id)); const cb = li.querySelector('input'); if(cb) cb.checked = elegidos.has(f.id); actualizarBoton();
+    });
+    el.addEventListener('mousedown', e => { if(e.target === el) cerrar([]); });
+    let tmo; inp.addEventListener('input', () => { clearTimeout(tmo); tmo = setTimeout(cargarLista, 350); });
+    document.addEventListener('keydown', function esc(e){ if(e.key === 'Escape' && document.body.contains(el)){ document.removeEventListener('keydown', esc); cerrar([]); } });
+    cargarLista();
   }));
 }
 
@@ -218,7 +280,7 @@ window.__nube = {
   get email(){ return auth && auth.email; }, get conectado(){ return tokenOk(); },
   pedirToken, salir, carpeta, listar, bajar, bajarBlob, subir, papelera, onCambio: f => oyentes.add(f),
   olvidarCarpeta(nombre = CARPETA){ delete carpetas[nombre]; ls.set('bae.drive.carpetas', carpetas); ls.del('bae.drive.carpeta'); },
-  sincronizarColeccion, elegirArchivos, precargarPicker: () => cargarPicker().catch(() => {})
+  sincronizarColeccion, elegirArchivos, precargarPicker: () => {}
 };
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pantallaIngreso); else pantallaIngreso();
 if(auth) cargarGsi().catch(() => {});
