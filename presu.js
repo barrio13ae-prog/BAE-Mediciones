@@ -569,7 +569,7 @@ async function pdf(envio){
   }
   // encabezado
   const L = window.BAE_LOGO;
-  if(L && L.lockPng){ doc.addImage(L.lockPng, 'PNG', M, y, 62, 15.3); }
+  if(L && L.pdfHeader) L.pdfHeader(doc, M, y, 15.3);
   doc.setTextColor(...TXT); doc.setFont('helvetica','bold'); doc.setFontSize(10.5);
   doc.text(SAFE(pf.servicio || ''), PW - M, y + 4, { align: 'right' });
   doc.setFont('helvetica','normal'); doc.setFontSize(9.5);

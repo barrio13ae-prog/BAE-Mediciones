@@ -709,7 +709,7 @@ async function pdf(){
   // encabezado BAE: franja azul + tricolor, logo y matrícula de gas
   doc.setFillColor(...blue); doc.rect(0, 0, PW, 3, 'F'); [[255,197,49],[255,122,26],[31,162,224]].forEach((c, i) => { doc.setFillColor(...c); doc.rect(i * PW / 3, 3, PW / 3, 1.2, 'F'); });
   y = 9;
-  const L = window.BAE_LOGO; if(L && L.lockPng){ try{ doc.addImage(L.lockPng, 'PNG', MG, y, 58, 14.3); }catch(e){} }
+  const L = window.BAE_LOGO; if(L && L.pdfHeader){ try{ L.pdfHeader(doc, MG, y, 14.3); }catch(e){} }
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20);
   doc.text(pdfSafe(pf.servicio || pf.empresa || ''), PW - MG, y + 3, { align: 'right' });
   doc.setFont('helvetica','normal'); doc.setFontSize(8.3); doc.setTextColor(70); let hy = y + 7.4;
