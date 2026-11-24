@@ -450,7 +450,14 @@ function seguir(aviso){
 }
 function marcarEtapa(s){
   const h = P.hitos, hoy = isoHoy(); let aviso = '';
-  if(h[s]) delete h[s];                                   // desmarcar (por si fue un error)
+  if(h[s]){                                               // desmarcar (por si fue un error)
+    if(s === 'cobrado'){                                  // se quita el cobro que se registró solo al marcar "Cobrado"
+      const antes = P.cobros.length;
+      P.cobros = P.cobros.filter(c => !(c.auto || (c.fecha === h.cobrado && (c.nota === 'Pago total' || c.nota === 'Saldo'))));
+      if(P.cobros.length < antes) aviso = 'Se desmarcó "Cobrado" y se quitó el cobro que se había registrado solo.';
+    }
+    delete h[s];
+  }
   else if(s === 'rechazado'){
     if(ACEPTADO.some(k => h[k])) return;                  // ya aceptado: no se puede rechazar
     h.rechazado = hoy;
@@ -460,7 +467,7 @@ function marcarEtapa(s){
     h[s] = hoy;
     if(s === 'cobrado'){
       const saldo = total() - cobrado(P);
-      if(saldo > 0.5){ P.cobros.push({ fecha: hoy, monto: String(Math.round(saldo)), nota: P.cobros.length ? 'Saldo' : 'Pago total' });
+      if(saldo > 0.5){ P.cobros.push({ fecha: hoy, monto: String(Math.round(saldo)), nota: P.cobros.length ? 'Saldo' : 'Pago total', auto: true });
         aviso = `Cobrado: se registró un cobro por el saldo ($ ${money(saldo)}). Si fue otro monto, corregilo en Cobros.`; }
     }
   }
@@ -678,6 +685,9 @@ window.addEventListener('hashchange', () => { if(location.hash === '#presu'){ re
 const N = window.__nube;
 let borrados = store.get('bae.presu.borrados', []);
 let pdfPend = [];
+// el formulario abierto coincide con lo guardado en la lista (sin contar datos internos)
+const sinMeta = x => { const o = Object.assign({}, x); ['_total', '_mod', '_dirty', '_driveId', '_pdfId'].forEach(k => delete o[k]); return JSON.stringify(o); };
+const igualGuardado = (a, b) => sinMeta(a) === sinMeta(b);
 let sinc = { txt: '', err: false }, sincronizando = null, otraVez = false;
 const horaCorta = t => { const d = new Date(t); return p2(d.getHours()) + ':' + p2(d.getMinutes()); };
 function nubeHTML(){
@@ -715,7 +725,9 @@ async function sincronizar(interactivo){
         const pid = f.appProperties && f.appProperties.id, mod = +(f.appProperties && f.appProperties.mod) || 0; if(!pid) continue;
         const i = lista.findIndex(x => x.id === pid), loc = lista[i];
         if(!loc || (!loc._dirty && (+loc._mod || 0) < mod)){
-          const d = await N.bajar(f.id); Object.assign(d, { id: pid, _driveId: f.id, _mod: mod, _dirty: false, _pdfId: loc ? loc._pdfId : d._pdfId });
+          const d = await N.bajar(f.id); Object.assign(d, { id: pid, _driveId: f.id, _mod: mod, _dirty: false, _pdfId: loc ? loc._pdfId : d._pdfId }); normHitos(d);
+          // si ese presupuesto está abierto acá y no tiene cambios sin guardar, se muestra la versión nueva
+          if(loc && P.id === pid && igualGuardado(P, loc)){ P = normHitos(JSON.parse(JSON.stringify(d))); guardarActual(); }
           if(i >= 0) lista[i] = d; else lista.push(d); cambio = true;
         } else if(!loc._driveId){ loc._driveId = f.id; }
       }
@@ -760,6 +772,7 @@ async function sincronizar(interactivo){
       store.set('bae.presu.lista', lista);
     }finally{
       sincronizando = null;
+      if(cambio) window.dispatchEvent(new Event('bae:presu-cambio')); // Resumen y Clientes se actualizan
       if(cambio || !sinc.err) refrescarLista(); else { const t = $('#pzNubeTxt', v); if(t) t.textContent = sinc.txt; }
       if(otraVez){ otraVez = false; sincronizar(false); }
     }
@@ -774,7 +787,7 @@ if(N){
     if(e.target.id === 'pzSalir'){ e.preventDefault(); N.salir(); location.reload(); }
   });
 }
-window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = normHitos(x); guardarActual(); render(); }, get precios(){ return precios; }, pdf, get lista(){ return lista; }, cobrado, waLink,
+window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = normHitos(x); guardarActual(); render(); }, get precios(){ return precios; }, pdf, get lista(){ return lista; }, cobrado, waLink, sincronizar,
   nuevoPara(c){ P = nuevo(); P.cliente = c.nombre || ''; P.telCliente = c.telefono || ''; P.direccion = [c.direccion, c.localidad].filter(Boolean).join(', '); guardarActual(); render(); } };
 render();
 APP.route();

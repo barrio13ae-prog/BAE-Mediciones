@@ -395,10 +395,16 @@ function bindIngresos(){
 }
 
 /* ---------- navegación ---------- */
+// presupuestos traídos de Drive (cambiados en otro dispositivo): se actualiza lo que esté a la vista
+window.addEventListener('bae:presu-cambio', () => {
+  if(location.hash === '#resumen' && !escribiendoRes()) renderResumen();
+  const a = document.activeElement;
+  if(location.hash === '#clientes' && !(a && vCli.contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName))) renderLista();
+});
 function alEntrar(){
   const h = location.hash;
   if(h === '#clientes'){ renderLista(); sincronizar(false); }
-  if(h === '#resumen'){ renderResumen(); sincronizarIng(false); }
+  if(h === '#resumen'){ renderResumen(); sincronizarIng(false); if(window.__presu && window.__presu.sincronizar) window.__presu.sincronizar(false); }
   if(h === '#inicio' || h === '' || h === '#') renderVencimientos();
 }
 window.addEventListener('hashchange', alEntrar);
