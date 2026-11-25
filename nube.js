@@ -300,7 +300,7 @@ function indicador(){
   el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ico}</svg><span>${txt}</span>`;
 }
 oyentes.add(indicador);
-const VERSION = '65';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
+const VERSION = '66';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
 document.addEventListener('click', e => { if(e.target.closest('[data-drive-opc]')){ e.preventDefault(); panelNube(); } });
 function pieVersion(){
   const home = window.__app && window.__app.VIEWS && window.__app.VIEWS.inicio && window.__app.VIEWS.inicio.el;
@@ -381,9 +381,10 @@ function doGet() { return salida({ ok: true, app: 'BAE' }); }
 
 function salida(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
-/* Ejecutá esta función una vez desde el editor (botón Ejecutar) para dar los permisos. */
+/* Ejecutá esta función una vez desde el editor (botón Ejecutar) para dar los permisos.
+   Crea y borra un archivo de prueba: así Google da permiso de lectura Y escritura en Drive. */
 function autorizar() {
-  DriveApp.getRootFolder();
+  DriveApp.createFile('bae-prueba-permisos.txt', 'ok').setTrashed(true);
   UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=user', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
 }
 `;
