@@ -250,7 +250,7 @@ async function blobFoto(id){
 }
 async function sincronizarFotos(){
   const ids = new Set(); lista.concat([{ fotos: S.fotos }]).forEach(x => (x.fotos || []).forEach(f => ids.add(f.id)));
-  if(!ids.size) return;
+  if(!ids.size || [...ids].every(id => fotosDrive[id])) return;   // todas subidas: no hace falta consultar Drive
   const rem = await N.listar('foto', CARPETA); rem.forEach(f => { if(f.appProperties && f.appProperties.id) fotosDrive[f.appProperties.id] = f.id; });
   for(const id of ids){
     if(fotosDrive[id]) continue;

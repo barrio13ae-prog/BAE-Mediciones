@@ -130,7 +130,7 @@ async function api(url, opt = {}, reintento){
   let r;
   const directo = () => fetch(url, Object.assign({}, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok.t }, opt.headers || {}) }));
   try{
-    if(via){ try{ r = await porProxy(url, opt, proxyCfg); }catch(e){ if(!opt.via && e.code === 'PROXY' && tokenOk() && navigator.onLine !== false) r = await directo(); else throw e; } }
+    if(via){ try{ r = await porProxy(url, opt, proxyCfg); }catch(e){ if(!opt.via && e.code === 'PROXY' && tokenOk() && navigator.onLine !== false && !(opt.method && opt.method !== 'GET')) r = await directo(); else throw e; } }
     else r = await directo();
   }
   catch(e){ ultErr = navigator.onLine === false ? '' : e.code === 'PROXY' ? e.message : 'sin conexión con Drive'; throw e; }
@@ -143,8 +143,9 @@ async function api(url, opt = {}, reintento){
     if(!reintento && (r.status === 429 || r.status >= 500)){ await new Promise(x => setTimeout(x, 1500)); return api(url, opt, true); }
     let det = ''; try{ const j = await r.json(); const e = j.error || {}; const razon = (e.errors && e.errors[0] && e.errors[0].reason) || (e.details && e.details[0] && e.details[0].reason) || e.status || '';
       if(/accessNotConfigured|SERVICE_DISABLED/i.test(razon + ' ' + e.message)) det = 'la API de Google Drive no está habilitada en el proyecto de Google Cloud';
-      else if(/insufficient|PERMISSION_DENIED|scope/i.test(razon + ' ' + e.message)) det = 'falta el permiso de Drive: cerrá sesión y volvé a ingresar marcando el permiso de Drive';
+      else if(!via && /insufficient|PERMISSION_DENIED|scope/i.test(razon + ' ' + e.message)) det = 'falta el permiso de Drive: cerrá sesión y volvé a ingresar marcando el permiso de Drive';
       else det = e.message || razon; }catch(x){}
+    ultErr = 'Drive respondió ' + r.status + (det ? ' (' + det + ')' : '') + (via ? ' [por el script]' : ' [directo]'); indicador();
     throw new Error('Drive respondió ' + r.status + (det ? ' (' + det + ')' : ''));
   }
   return r;
@@ -299,7 +300,7 @@ function indicador(){
   el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ico}</svg><span>${txt}</span>`;
 }
 oyentes.add(indicador);
-const VERSION = '64';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
+const VERSION = '65';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
 document.addEventListener('click', e => { if(e.target.closest('[data-drive-opc]')){ e.preventDefault(); panelNube(); } });
 function pieVersion(){
   const home = window.__app && window.__app.VIEWS && window.__app.VIEWS.inicio && window.__app.VIEWS.inicio.el;
