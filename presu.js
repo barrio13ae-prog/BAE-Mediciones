@@ -548,7 +548,8 @@ async function reciboPdf(o){
     doc.setFont('helvetica', fuerte ? 'bold' : 'normal'); doc.setFontSize(10.5);
     doc.text(SAFE(k), M + 3, y + 5.5); doc.text(SAFE(val), PW - M - 3, y + 5.5, { align: 'right' }); y += 8; });
   y += 30;
-  // firma
+  // firma (con la imagen de "Mis datos" si está cargada)
+  { const fT = DT.firmaTecnico ? DT.firmaTecnico() : null; if(fT){ try{ doc.addImage(fT, 'PNG', PW - M - 62, y - 26, 54, 24); }catch(e){} } }
   doc.setDrawColor(60); doc.line(PW - M - 70, y, PW - M, y);
   doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text(SAFE(pf.nombre || ''), PW - M - 35, y + 5, { align: 'center' });
   doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text(SAFE(pf.empresa || ''), PW - M - 35, y + 9.5, { align: 'center' });
@@ -710,6 +711,15 @@ async function pdf(envio){
   conds.push(ant ? `**Forma de pago y anticipo: a convenir.** Idealmente, un anticipo del ${ant}% del total ($${money(T * ant / 100)}) al aceptar el presupuesto; el saldo, según lo acordado.` : '**Forma de pago: a convenir.**');
   bloque(conds.map(c => '- ' + c).join('\n'));
   if(banco.length){ need(banco.length * 5 + 2); doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...TXT); banco.forEach(l => { doc.text(SAFE(l), M, y); y += 4.8; }); }
+  // firma del profesional (la de "Mis datos" en Inicio)
+  { const fT = DT.firmaTecnico ? DT.firmaTecnico() : null, cred = creds.filter(Boolean)[0] || '';
+    need(fT ? 46 : 26); y += fT ? 30 : 14;
+    if(fT){ try{ doc.addImage(fT, 'PNG', PW - M - 62, y - 26, 54, 24); }catch(e){} }
+    doc.setDrawColor(150); doc.line(PW - M - 70, y, PW - M, y); doc.setTextColor(...TXT);
+    doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.text(SAFE(pf.nombre || 'Firma y aclaración'), PW - M - 35, y + 5, { align: 'center' });
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); let fy = y + 9.5;
+    [cred, pf.empresa].filter(Boolean).forEach(t => { doc.splitTextToSize(SAFE(t), 78).forEach(l => { doc.text(l, PW - M - 35, fy, { align: 'center' }); fy += 4; }); });
+    y = fy; }
   return terminar();
   async function terminar(){
   const n = doc.getNumberOfPages(), nom = (pf.nombre || '').split(' ').filter(Boolean);

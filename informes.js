@@ -409,6 +409,48 @@ mcss.textContent = `
   .mapa-btn{padding:6px 12px;font-size:13px}`;
 document.head.appendChild(mcss);
 
+
+/* Firma desde una foto: firma en papel blanco con birome oscura → fondo transparente, tinta azul oscura, recortada */
+function firmaDeImagen(file){
+  return new Promise((ok, mal) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); mal(new Error('no se pudo abrir la imagen')); };
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const k = Math.min(1, 1400 / Math.max(img.width, img.height)), W = Math.round(img.width * k), H = Math.round(img.height * k);
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d');
+      cx.drawImage(img, 0, 0, W, H);
+      const id = cx.getImageData(0, 0, W, H), d = id.data, lum = new Float32Array(W * H);
+      for(let i = 0; i < W * H; i++) lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+      // fondo local (bloques de 32 px) para tolerar sombras y luz despareja de la foto
+      const B = 32, bw = Math.ceil(W / B), bh = Math.ceil(H / B), fondo = new Float32Array(bw * bh);
+      for(let by = 0; by < bh; by++) for(let bx = 0; bx < bw; bx++){
+        const vals = [];
+        for(let y = by * B; y < Math.min(H, by * B + B); y += 2) for(let x = bx * B; x < Math.min(W, bx * B + B); x += 2) vals.push(lum[y * W + x]);
+        vals.sort((a, b) => a - b); fondo[by * bw + bx] = vals[Math.floor(vals.length * 0.9)] || 255;
+      }
+      let x0 = W, y0 = H, x1 = 0, y1 = 0, n = 0;
+      for(let y = 0; y < H; y++) for(let x = 0; x < W; x++){
+        const i = y * W + x, bg = fondo[Math.min(bh - 1, Math.floor(y / B)) * bw + Math.min(bw - 1, Math.floor(x / B))];
+        const t = (bg - lum[i]) / Math.max(40, bg * 0.55);          // 0 = papel, 1 = tinta
+        const a = t <= 0.25 ? 0 : Math.min(1, (t - 0.25) / 0.35);
+        d[i * 4] = 13; d[i * 4 + 1] = 27; d[i * 4 + 2] = 58; d[i * 4 + 3] = Math.round(a * 255);
+        if(a > 0.5){ n++; if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
+      }
+      if(n < 60) return mal(new Error('no encontré la firma: probá con una foto más cerca, sobre papel blanco'));
+      cx.putImageData(id, 0, 0);
+      const pad = 12; x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(W, x1 + pad); y1 = Math.min(H, y1 + pad);
+      const w = x1 - x0, hh = y1 - y0, kk = Math.max(w / 54, hh / 24), c2 = document.createElement('canvas');
+      c2.width = Math.round(54 * kk); c2.height = Math.round(24 * kk);
+      c2.getContext('2d').drawImage(cv, x0, y0, w, hh, (c2.width - w) / 2, (c2.height - hh) / 2, w, hh);
+      // tamaño razonable para sincronizar
+      const c3 = document.createElement('canvas'), k3 = Math.min(1, 540 / c2.width); c3.width = Math.round(c2.width * k3); c3.height = Math.round(c2.height * k3);
+      c3.getContext('2d').drawImage(c2, 0, 0, c3.width, c3.height);
+      ok(c3.toDataURL('image/png'));
+    };
+    img.src = url;
+  });
+}
 /* ---------- firma del técnico (una vez, sincronizada) ---------- */
 let ajustes = store.get('bae.aj.lista', []);
 const firmaTec = () => { const f = ajustes.find(x => x.id === 'firma'); return f && f.data || null; };
@@ -425,9 +467,17 @@ function renderMiFirma(){
   let el = document.getElementById('miFirma');
   if(!el){ el = document.createElement('div'); el.id = 'miFirma'; el.style.marginTop = '14px'; const ref = box.querySelector('#pfMsg'); box.insertBefore(el, ref || null); }
   const f = firmaTec();
-  el.innerHTML = `<h3 class="sub" style="margin:0 0 6px">Mi firma</h3><div class="row" style="align-items:center">${f ? `<img src="${f}" alt="Tu firma" style="height:56px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:2px 8px">` : '<span class="hint" style="margin:0">Todavía no cargaste tu firma. Sale en los informes PDF.</span>'}
-    <button id="mfDib">${f ? 'Cambiar' : 'Dibujar mi firma'}</button>${f ? '<button id="mfBor">Quitar</button>' : ''}</div>`;
+  el.innerHTML = `<h3 class="sub" style="margin:0 0 6px">Mi firma</h3><div class="row" style="align-items:center">${f ? `<img src="${f}" alt="Tu firma" style="height:56px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:2px 8px">` : '<span class="hint" style="margin:0">Todavía no cargaste tu firma.</span>'}
+    <button id="mfFoto">${f ? 'Cambiar por foto' : 'Subir foto de mi firma'}</button><button id="mfDib">${f ? 'Dibujar de nuevo' : 'Dibujarla'}</button>${f ? '<button id="mfBor">Quitar</button>' : ''}
+    <input type="file" id="mfArch" accept="image/*" hidden></div>
+    <p class="hint" style="margin:6px 0 0">Sale en presupuestos, recibos, informes y memorias de gas. Para la foto: firmá en una hoja blanca con birome oscura y sacala de cerca, con buena luz.</p>
+    <p class="hint" id="mfMsg" style="margin:4px 0 0"></p>`;
   el.querySelector('#mfDib').onclick = async () => { const d = await firmar('Tu firma'); if(d) setFirmaTec(d); };
+  const arch = el.querySelector('#mfArch'), mm = el.querySelector('#mfMsg');
+  el.querySelector('#mfFoto').onclick = () => arch.click();
+  arch.onchange = async () => { const fl = arch.files[0]; arch.value = ''; if(!fl) return; mm.textContent = 'Procesando la foto…';
+    try{ setFirmaTec(await firmaDeImagen(fl)); const m2 = document.getElementById('mfMsg'); if(m2) m2.textContent = 'Firma cargada. Si no se ve bien, probá con otra foto más cerca y con más luz.'; }
+    catch(e){ mm.textContent = 'No se pudo usar la foto: ' + e.message + '.'; } };
   const b = el.querySelector('#mfBor'); if(b) b.onclick = () => setFirmaTec(null);
 }
 

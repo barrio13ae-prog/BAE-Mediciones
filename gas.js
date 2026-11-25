@@ -758,7 +758,10 @@ async function pdf(){
     { style: (i, k) => k === 2 ? { bold: true, color: gas.chk[CL[i][0]] === 'ok' ? [19,122,58] : gas.chk[CL[i][0]] === 'no' ? [180,35,24] : [110,110,110] } : null });
   if(M.length){ H2('7. Cómputo de materiales (orientativo)'); table([{h:'Ítem',w:120},{h:'Diámetro',w:30},{h:'Cantidad',w:26}], M.map(r => [r.item, r.d ? dLab(r.d) : '', r.u === 'm' ? fmt(r.q,1) + ' m' : String(Math.ceil(r.q))])); }
   if(o.obs){ H2('Observaciones'); P(o.obs); }
-  need(34); y += 18; doc.setDrawColor(150); doc.line(PW - MG - 75, y, PW - MG, y);
+  const fT = window.__dt && window.__dt.firmaTecnico ? window.__dt.firmaTecnico() : null;
+  need(fT ? 50 : 34); y += fT ? 30 : 18;
+  if(fT){ try{ doc.addImage(fT, 'PNG', PW - MG - 64.5, y - 26, 54, 24); }catch(e){} }
+  doc.setDrawColor(150); doc.line(PW - MG - 75, y, PW - MG, y);
   doc.setFontSize(9); doc.setTextColor(90); let fy = y + 5;
   [pf.nombre || 'Firma y aclaración', pf.matGas ? (pf.tituloGas || 'Gasista matriculado') + ' - Mat. ' + pf.matGas : 'Instalador gasista matriculado', pf.empresa].filter(Boolean).forEach(t => { doc.text(pdfSafe(t), PW - MG - 37.5, fy, { align: 'center' }); fy += 5; });
   const n = doc.getNumberOfPages(); for(let i = 1; i <= n; i++){ doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(pdfSafe(['Memoria técnica de gas', o.cliente, o.dir].filter(Boolean).join(' - ')), MG, 290); doc.text(`Página ${i} de ${n}`, PW - MG, 290, { align: 'right' }); }
