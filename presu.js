@@ -158,7 +158,7 @@ css.textContent = `
   .pz-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
   .pz-top h2{margin:0}
   .pz-top button{padding:8px 14px}
-  .pz-nube .t{flex:1}.pz-nube .opc,#infGuardados .if-nube .opc{padding:5px 10px;font-size:12.5px;border-radius:999px}
+  .pz-nube .t,#infGuardados .if-nube .t{flex:1;min-width:0}.pz-nube button,#infGuardados .if-nube button{flex:none}.pz-nube .opc,#infGuardados .if-nube .opc{padding:5px 10px;font-size:12.5px;border-radius:999px;width:auto}
   .pz-nube{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;margin:0 0 10px;border-radius:999px;background:var(--neutral-bg);font-size:13px;color:var(--muted)}
   .pz-nube svg{width:18px;height:18px;flex-shrink:0;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linejoin:round}
   .pz-nube .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

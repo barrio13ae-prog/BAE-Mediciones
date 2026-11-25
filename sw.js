@@ -1,6 +1,6 @@
 /* BAE Servicios de Instalaciones: abre aunque falle la conexión, usando la última versión guardada.
    Al publicar cambios, subir el número de CACHE: así la app avisa "Hay una versión nueva". */
-const CACHE = 'bae-v66';
+const CACHE = 'bae-v67';
 const CORE = ['./', './index.html', './srt.js', './logo.js', './nube.js', './presu.js', './informes.js', './clientes.js', './calc.js', './gas.js', './precios-ref.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 // librerías externas (PDF y ZIP): se guardan para poder generar informes sin conexión; si fallan no frenan la instalación
 const CDN = ['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'];
