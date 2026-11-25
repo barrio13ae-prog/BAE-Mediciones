@@ -294,6 +294,14 @@ function indicador(){
   el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ico}</svg><span>${txt}</span>`;
 }
 oyentes.add(indicador);
+const VERSION = '58';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
+document.addEventListener('click', e => { if(e.target.closest('[data-drive-opc]')){ e.preventDefault(); panelNube(); } });
+function pieVersion(){
+  const home = window.__app && window.__app.VIEWS && window.__app.VIEWS.inicio && window.__app.VIEWS.inicio.el;
+  if(!home || document.getElementById('baeVer')) return;
+  const p = document.createElement('p'); p.id = 'baeVer'; p.style.cssText = 'text-align:center;font-size:12px;color:var(--muted,#4a5d66);margin:8px 0 0';
+  p.textContent = 'Versión ' + VERSION; home.appendChild(p);
+}
 /* ---------- panel del indicador y configuración de la sincronización permanente ---------- */
 const CARPETA_CFG = CARPETA;
 async function adoptarProxy(){
@@ -373,7 +381,7 @@ function panelNube(){
   const p = pendientes();
   const estado = navigator.onLine === false ? 'Sin internet: se sube a Drive cuando vuelva la conexión.' : !conectado() ? 'Google Drive está desconectado.'
     : ultErr ? 'Último intento con error: ' + ultErr + '.' : p ? `${p} cambio${p === 1 ? '' : 's'} esperando para subir.` : 'Todo sincronizado' + (ultOk ? ' (última vez ' + hhmm(ultOk) + ').' : '.');
-  const w = abrirPanel(`<header><b>Google Drive</b><button class="x" data-cerrar aria-label="Cerrar">×</button></header>
+  const w = abrirPanel(`<header><b>Google Drive</b><small style="color:var(--muted,#4a5d66)">v${VERSION}</small><button class="x" data-cerrar aria-label="Cerrar">×</button></header>
     <div class="estado">${escH(estado)}</div>
     <div class="fila">${conectado() ? '<button class="primary" data-a="sync">Sincronizar ahora</button>' : '<button class="primary" data-a="con">Reconectar Google Drive</button>'}</div>
     <p><b>Sincronización permanente:</b> ${conProxy() ? 'activa. La app no necesita reconectar Google.' : 'desactivada. Sin ella, Google pide reconectar cada hora.'}</p>
@@ -534,5 +542,5 @@ window.__nube = {
 };
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pantallaIngreso); else pantallaIngreso();
 if(auth){ cargarGsi().catch(() => {}); setTimeout(revisarAviso, 1500); }
-if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(indicador, 0)); else setTimeout(indicador, 0);
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(() => { indicador(); pieVersion(); }, 0)); else setTimeout(() => { indicador(); pieVersion(); }, 0);
 })();

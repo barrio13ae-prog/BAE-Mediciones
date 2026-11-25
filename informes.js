@@ -122,7 +122,7 @@ function nubeHTML(){
   if(!N || !N.email) return '';
   const u = store.get('bae.inf.ult', 0);
   const t = sinc.txt || (u ? 'Drive al día · ' + (new Date(u).toDateString() === new Date().toDateString() ? 'hoy ' + p2(new Date(u).getHours()) + ':' + p2(new Date(u).getMinutes()) : new Date(u).toLocaleDateString('es-AR')) : 'Todavía no se sincronizó.');
-  return `<div class="if-nube${sinc.err ? ' err' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/></svg><span class="t" id="ifNubeTxt">${esc(t)}</span><button id="ifSync" title="Sincronizar ahora" aria-label="Sincronizar ahora">↻</button></div>`;
+  return `<div class="if-nube${sinc.err ? ' err' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/></svg><span class="t" id="ifNubeTxt">${esc(t)}</span><button class="opc" data-drive-opc title="Opciones de Google Drive y sincronización permanente">Opciones</button><button id="ifSync" title="Sincronizar ahora" aria-label="Sincronizar ahora">↻</button></div>`;
 }
 function filaHTML(x){
   const r = x.report || {}, q = sinAcentos([r.empresa, r.obra, r.direccion, r.cuit, fmtD(r.fecha)].join(' ')), n = x.n ?? (x.meas || []).length;

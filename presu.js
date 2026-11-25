@@ -158,6 +158,7 @@ css.textContent = `
   .pz-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
   .pz-top h2{margin:0}
   .pz-top button{padding:8px 14px}
+  .pz-nube .t{flex:1}.pz-nube .opc,#infGuardados .if-nube .opc{padding:5px 10px;font-size:12.5px;border-radius:999px}
   .pz-nube{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;margin:0 0 10px;border-radius:999px;background:var(--neutral-bg);font-size:13px;color:var(--muted)}
   .pz-nube svg{width:18px;height:18px;flex-shrink:0;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linejoin:round}
   .pz-nube .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -760,7 +761,7 @@ function txtNube(){
 function nubeHTML(){
   if(!N || !N.email) return '';
   const txt = sinc.txt || txtNube();
-  return `<div class="pz-nube${sinc.err ? ' err' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/></svg><span class="t" id="pzNubeTxt">${esc(txt)}</span><button id="pzSync" title="Sincronizar ahora" aria-label="Sincronizar ahora">↻</button></div>`;
+  return `<div class="pz-nube${sinc.err ? ' err' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/></svg><span class="t" id="pzNubeTxt">${esc(txt)}</span><button class="opc" data-drive-opc title="Opciones de Google Drive y sincronización permanente">Opciones</button><button id="pzSync" title="Sincronizar ahora" aria-label="Sincronizar ahora">↻</button></div>`;
 }
 function estado(t, err){ sinc = { txt: t, err: !!err }; const e = $('#pzNubeTxt', v); if(e){ e.textContent = t; e.closest('.pz-nube').classList.toggle('err', !!err); } }
 const nombreArchivo = x => ('Presupuesto_' + x.numero + '_' + (x.cliente || 'cliente')).replace(/[\\/:*?"<>|]+/g, '_');
