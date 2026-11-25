@@ -43,7 +43,7 @@ function cliente(){
     client_id: CLIENT_ID, scope: SCOPES, hd: DOMINIO, login_hint: auth && auth.email || undefined,
     callback: r => {
       const cola = esperando; esperando = [];
-      if(r && r.access_token){ tok = { t: r.access_token, exp: Date.now() + (r.expires_in || 3600) * 1000, sc: r.scope || '' }; ls.set('bae.tok', tok); cola.forEach(c => c.ok(tok.t)); setTimeout(pulso, 50); }
+      if(r && r.access_token){ tok = { t: r.access_token, exp: Date.now() + (r.expires_in || 3600) * 1000, sc: r.scope || '' }; ls.set('bae.tok', tok); cola.forEach(c => c.ok(tok.t)); setTimeout(() => { adoptarProxy().finally(pulso); }, 50); }
       else cola.forEach(c => c.mal(new Error(r && r.error || 'no autorizado')));
       avisar();
     },
@@ -101,15 +101,42 @@ function salir(){
 
 /* ---------- Google Drive ---------- */
 let enCurso = 0, ultOk = ls.get('bae.drive.ultOk', 0), ultErr = '';
+
+/* ---------- sincronización permanente ----------
+   Un script de Google Apps Script en la cuenta del usuario hace los pedidos a Drive en nombre de la app.
+   Su permiso no vence cada hora como el de la ventana de Google, así que la app sincroniza sin pedir reconectar.
+   proxy = { url, k } (dirección de la aplicación web y clave compartida). */
+let proxy = ls.get('bae.proxy', null);
+const conProxy = () => !!(proxy && proxy.url && proxy.k);
+const conectado = () => conProxy() || tokenOk();
+function aB64(u8){ let s = ''; for(let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+function deB64(t){ const s = atob(t || ''), u8 = new Uint8Array(s.length); for(let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i); return u8; }
+async function porProxy(url, opt = {}, p = proxy){
+  const h = opt.headers || {}, body = opt.body;
+  const b = body == null ? '' : aB64(body instanceof Blob ? new Uint8Array(await body.arrayBuffer()) : new TextEncoder().encode(String(body)));
+  let r;
+  try{ r = await fetch(p.url, { method: 'POST', body: JSON.stringify({ k: p.k, u: url, m: opt.method || 'GET', ct: h['Content-Type'] || '', b }), redirect: 'follow' }); }
+  catch(e){ throw Object.assign(new Error('no se pudo conectar con el servicio de sincronización'), { code: 'PROXY' }); }
+  let j; try{ j = await r.json(); }catch(e){ throw Object.assign(new Error('el servicio de sincronización no respondió bien (¿la implementación tiene acceso "Cualquier usuario"?)'), { code: 'PROXY' }); }
+  if(j.error) throw Object.assign(new Error(j.error === 'clave' ? 'la clave del servicio de sincronización no coincide' : 'servicio de sincronización: ' + j.error), { code: 'PROXY' });
+  const s = +j.s || 500;
+  return new Response(s === 204 || s === 304 ? null : deB64(j.b), { status: s, headers: { 'Content-Type': j.ct || 'application/octet-stream' } });
+}
 async function api(url, opt = {}, reintento){
-  if(!tokenOk()) throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' });
+  const via = conProxy();
+  if(!via && !tokenOk()) throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' });
   enCurso++; indicador();
   let r;
-  try{ r = await fetch(url, Object.assign({}, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok.t }, opt.headers || {}) })); }
-  catch(e){ ultErr = navigator.onLine === false ? '' : 'sin conexión con Drive'; throw e; }
+  const directo = () => fetch(url, Object.assign({}, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok.t }, opt.headers || {}) }));
+  try{
+    if(via){ try{ r = await porProxy(url, opt); }catch(e){ if(e.code === 'PROXY' && tokenOk() && navigator.onLine !== false) r = await directo(); else throw e; } }
+    else r = await directo();
+  }
+  catch(e){ ultErr = navigator.onLine === false ? '' : e.code === 'PROXY' ? e.message : 'sin conexión con Drive'; throw e; }
   finally{ enCurso--; setTimeout(indicador, 400); }
   if(r.ok){ ultOk = Date.now(); ultErr = ''; ls.set('bae.drive.ultOk', ultOk); }
   else if(r.status !== 404) ultErr = 'Drive respondió ' + r.status;
+  if(r.status === 401 && via) throw Object.assign(new Error('el servicio de sincronización perdió el permiso de Drive: volvé a ejecutar "autorizar" en el script'), { code: 'PROXY' });
   if(r.status === 401){ tok = null; ls.del('bae.tok'); avisar(); throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' }); }
   if(!r.ok){
     if(!reintento && (r.status === 429 || r.status >= 500)){ await new Promise(x => setTimeout(x, 1500)); return api(url, opt, true); }
@@ -207,11 +234,11 @@ async function sincronizarColeccion(o){
    Avisa a los módulos ("bae:sync") que traigan y suban cambios: al conectar Google, al volver a la app,
    al recuperar internet y cada minuto mientras está abierta. Si el permiso de Google venció, muestra un aviso para reconectar. */
 const visible = () => document.visibilityState !== 'hidden';
-function pulso(){ revisarAviso(); if(auth && tokenOk() && visible() && navigator.onLine !== false) window.dispatchEvent(new Event('bae:sync')); }
+function pulso(){ revisarAviso(); if(auth && conectado() && visible() && navigator.onLine !== false) window.dispatchEvent(new Event('bae:sync')); }
 let avisoCerrado = false;
 function revisarAviso(){
   let b = document.getElementById('baeDrive');
-  const mostrar = auth && auth.email && !tokenOk() && navigator.onLine !== false && !avisoCerrado && !document.getElementById('baeGate');
+  const mostrar = auth && auth.email && !conectado() && navigator.onLine !== false && !avisoCerrado && !document.getElementById('baeGate');
   if(!mostrar){ if(b) b.remove(); return; }
   if(b) return;
   if(!document.getElementById('baeDriveCss')){
@@ -252,21 +279,150 @@ function indicador(){
       document.head.appendChild(c);
     }
     el = document.createElement('button'); el.type = 'button'; el.id = 'baeNube';
-    el.onclick = () => { if(!tokenOk()) pedirToken(false).then(pulso, () => {}); else pulso(); };
+    el.onclick = () => panelNube();
     brand.appendChild(el);
   }
   const p = pendientes(), NUBE = '<path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/>';
   let cls, txt, ico = NUBE, tit;
   if(navigator.onLine === false){ cls = p ? 'pend' : ''; txt = p ? `Sin internet · ${p} sin subir` : 'Sin internet'; tit = 'Se sube a Drive cuando vuelva la conexión.'; }
-  else if(!tokenOk()){ cls = 'mal'; txt = p ? `Desconectado · ${p} sin subir` : 'Drive desconectado'; tit = 'Tocá para reconectar Google Drive.'; }
+  else if(!conectado()){ cls = 'mal'; txt = p ? `Desconectado · ${p} sin subir` : 'Drive desconectado'; tit = 'Tocá para reconectar Google Drive.'; }
   else if(enCurso > 0){ cls = 'gira'; txt = 'Sincronizando…'; ico = '<path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/>'; tit = 'Trayendo y subiendo cambios.'; }
   else if(ultErr){ cls = 'mal'; txt = 'Error al sincronizar'; tit = ultErr + '. Tocá para reintentar.'; }
   else if(p){ cls = 'pend'; txt = `${p} sin subir`; tit = 'Tocá para sincronizar ahora.'; }
-  else { cls = 'ok'; txt = ultOk ? 'Al día · ' + hhmm(ultOk) : 'Drive conectado'; tit = 'Todo sincronizado con Google Drive. Tocá para sincronizar ahora.'; }
+  else { cls = 'ok'; txt = ultOk ? 'Al día · ' + hhmm(ultOk) : 'Drive conectado'; tit = 'Todo sincronizado con Google Drive' + (conProxy() ? ' (sincronización permanente)' : '') + '. Tocá para ver opciones.'; }
   el.className = cls; el.title = tit; el.setAttribute('aria-label', txt + '. ' + tit);
   el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ico}</svg><span>${txt}</span>`;
 }
 oyentes.add(indicador);
+/* ---------- panel del indicador y configuración de la sincronización permanente ---------- */
+const CARPETA_CFG = CARPETA;
+async function adoptarProxy(){
+  if(conProxy() || !tokenOk()) return;
+  try{
+    const f = (await listar('proxy', CARPETA_CFG))[0]; if(!f) return;
+    const c = await bajar(f.id); if(!c || !c.url || !c.k) return;
+    await probarProxy(c); proxy = { url: c.url, k: c.k }; ls.set('bae.proxy', proxy); indicador();
+  }catch(e){}
+}
+if(auth && !conProxy() && tokenOk()) setTimeout(() => adoptarProxy(), 2500);
+async function probarProxy(p){
+  const r = await porProxy('https://www.googleapis.com/drive/v3/about?fields=user', {}, p);
+  if(!r.ok) throw new Error('Drive respondió ' + r.status + ' al probar el servicio');
+  const u = ((await r.json()).user || {}).emailAddress || '';
+  if(auth && auth.email && u.toLowerCase() !== auth.email.toLowerCase()) throw new Error(`el script está en otra cuenta (${u}); tiene que estar en ${auth.email}`);
+  return u;
+}
+function codigoScript(clave){
+  return `/* BAE Servicios de Instalaciones — sincronización permanente con Google Drive.
+   La app le pide a este script que lea y guarde en Drive en su nombre: así no hace falta reconectar Google cada hora.
+   Solo acepta pedidos con la clave de abajo y solo a la API de Google Drive. */
+const CLAVE = '${clave}';
+
+function doPost(e) {
+  let q;
+  try { q = JSON.parse(e.postData.contents); } catch (x) { return salida({ error: 'pedido inválido' }); }
+  if (!q || q.k !== CLAVE) return salida({ error: 'clave' });
+  if (!/^https:\\/\\/www\\.googleapis\\.com\\/(upload\\/)?drive\\/v3\\//.test(q.u || '')) return salida({ error: 'dirección no permitida' });
+  const op = { method: String(q.m || 'get').toLowerCase(), muteHttpExceptions: true,
+               headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } };
+  if (q.ct) op.contentType = q.ct;
+  if (q.b) op.payload = Utilities.base64Decode(q.b);
+  const r = UrlFetchApp.fetch(q.u, op);
+  return salida({ s: r.getResponseCode(), ct: String(r.getHeaders()['Content-Type'] || ''), b: Utilities.base64Encode(r.getContent()) });
+}
+
+function doGet() { return salida({ ok: true, app: 'BAE' }); }
+
+function salida(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+/* Ejecutá esta función una vez desde el editor (botón Ejecutar) para dar los permisos. */
+function autorizar() {
+  DriveApp.getRootFolder();
+  UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=user', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
+}
+`;
+}
+let cssPanel = false;
+function estilosPanel(){
+  if(cssPanel) return; cssPanel = true;
+  const c = document.createElement('style');
+  c.textContent = `.bnp{position:fixed;inset:0;z-index:9500;background:rgba(10,22,28,.5);display:grid;place-items:center;padding:16px}
+  .bnp .box{background:var(--card,#fff);color:var(--ink,#0f2733);width:min(620px,100%);max-height:100%;overflow:auto;border-radius:16px;padding:18px 18px 16px;box-shadow:0 20px 60px rgba(0,0,0,.35);display:grid;gap:12px}
+  .bnp header{display:flex;align-items:center;gap:10px;padding:0;margin:0}.bnp header b{flex:1;font-size:17px}
+  .bnp .x{border:0;background:none;font-size:22px;line-height:1;padding:4px 8px;cursor:pointer;color:inherit}
+  .bnp p{margin:0;font-size:14.5px;color:var(--muted,#4a5d66)}.bnp p b{color:var(--ink,#0f2733)}
+  .bnp ol{margin:0;padding-left:22px;display:grid;gap:10px;font-size:14.5px}
+  .bnp textarea{width:100%;height:120px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;margin:6px 0 0}
+  .bnp input{width:100%;margin:6px 0 0}
+  .bnp .fila{display:flex;gap:8px;flex-wrap:wrap}
+  .bnp .msg{min-height:1.2em;font-size:14px}.bnp .msg.err{color:#b42318}.bnp .msg.ok{color:#0b7a4b}
+  .bnp .estado{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--neutral-bg,#e4ecf0);font-size:14px}`;
+  document.head.appendChild(c);
+}
+function abrirPanel(html){
+  estilosPanel();
+  const el = document.createElement('div'); el.className = 'bnp';
+  el.innerHTML = `<div class="box" role="dialog">${html}</div>`;
+  document.body.appendChild(el);
+  const cerrar = () => el.remove();
+  el.addEventListener('mousedown', e => { if(e.target === el) cerrar(); });
+  el.querySelectorAll('[data-cerrar]').forEach(b => b.onclick = cerrar);
+  return { el, cerrar, $: s => el.querySelector(s) };
+}
+function panelNube(){
+  const p = pendientes();
+  const estado = navigator.onLine === false ? 'Sin internet: se sube a Drive cuando vuelva la conexión.' : !conectado() ? 'Google Drive está desconectado.'
+    : ultErr ? 'Último intento con error: ' + ultErr + '.' : p ? `${p} cambio${p === 1 ? '' : 's'} esperando para subir.` : 'Todo sincronizado' + (ultOk ? ' (última vez ' + hhmm(ultOk) + ').' : '.');
+  const w = abrirPanel(`<header><b>Google Drive</b><button class="x" data-cerrar aria-label="Cerrar">×</button></header>
+    <div class="estado">${escH(estado)}</div>
+    <div class="fila">${conectado() ? '<button class="primary" data-a="sync">Sincronizar ahora</button>' : '<button class="primary" data-a="con">Reconectar Google Drive</button>'}</div>
+    <p><b>Sincronización permanente:</b> ${conProxy() ? 'activa. La app no necesita reconectar Google.' : 'desactivada. Sin ella, Google pide reconectar cada hora.'}</p>
+    <div class="fila"><button data-a="perm">${conProxy() ? 'Ver o cambiar la configuración' : 'Configurar sincronización permanente'}</button></div>
+    <div class="msg"></div>`);
+  const m = w.$('.msg');
+  const b = w.$('[data-a="sync"]'); if(b) b.onclick = () => { pulso(); w.cerrar(); };
+  const c = w.$('[data-a="con"]'); if(c) c.onclick = () => { m.textContent = 'Conectando con Google…'; pedirToken(false).then(() => { w.cerrar(); pulso(); }, e => { m.textContent = 'No se pudo conectar: ' + e.message + '.'; m.className = 'msg err'; }); };
+  w.$('[data-a="perm"]').onclick = () => { w.cerrar(); panelPermanente(); };
+}
+function panelPermanente(){
+  let clave = (proxy && proxy.k) || ls.get('bae.proxy.clave', '');
+  if(!clave){ const a = new Uint8Array(24); crypto.getRandomValues(a); clave = Array.from(a, x => x.toString(16).padStart(2, '0')).join(''); ls.set('bae.proxy.clave', clave); }
+  const codigo = codigoScript(clave);
+  const w = abrirPanel(`<header><b>Sincronización permanente</b><button class="x" data-cerrar aria-label="Cerrar">×</button></header>
+    ${conProxy() ? `<div class="estado">✓ Activa en este dispositivo.</div>` : ''}
+    <p>Se hace <b>una sola vez</b>, desde la PC. Los demás dispositivos la toman solos de Drive la próxima vez que conecten Google.</p>
+    <ol>
+      <li><b>Copiá este código</b> (ya tiene tu clave):<textarea readonly>${escH(codigo)}</textarea><div class="fila"><button data-a="copiar">Copiar código</button></div></li>
+      <li>Abrí <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com</a> con tu cuenta <b>${escH((auth && auth.email) || '@' + DOMINIO)}</b>. Se abre un proyecto nuevo: borrá lo que tiene, pegá el código y guardá (ícono del disquete). Ponele de nombre <b>BAE Sincronización</b>.</li>
+      <li>Arriba, al lado de “Depurar”, elegí la función <b>autorizar</b> y tocá <b>Ejecutar</b>. Google pide permisos: <b>Revisar permisos</b> → tu cuenta → <b>Permitir</b>. (Si aparece “Google no verificó esta app”: <b>Configuración avanzada</b> → <b>Ir a BAE Sincronización</b>.)</li>
+      <li>Arriba a la derecha: <b>Implementar</b> → <b>Nueva implementación</b> → en el engranaje elegí <b>Aplicación web</b>. Ejecutar como: <b>Yo</b>. Quién tiene acceso: <b>Cualquier usuario</b>. Tocá <b>Implementar</b> y copiá la <b>URL de la aplicación web</b> (termina en <b>/exec</b>).</li>
+      <li>Pegala acá y probá:<input id="bnpUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${escH((proxy && proxy.url) || '')}" inputmode="url" autocomplete="off"></li>
+    </ol>
+    <div class="fila"><button class="primary" data-a="probar">Probar y activar</button>${conProxy() ? '<button data-a="quitar">Desactivar en este dispositivo</button>' : ''}</div>
+    <div class="msg"></div>`);
+  const m = w.$('.msg'), decir = (t, cls) => { m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); };
+  w.$('[data-a="copiar"]').onclick = async () => { const ta = w.$('textarea');
+    try{ await navigator.clipboard.writeText(codigo); decir('Código copiado.', 'ok'); }catch(e){ ta.focus(); ta.select(); decir('Seleccioné el código: copialo con Ctrl+C.'); } };
+  w.$('[data-a="probar"]').onclick = async () => {
+    const url = w.$('#bnpUrl').value.trim();
+    if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) return decir('Pegá la URL de la aplicación web: empieza con https://script.google.com/ y termina en /exec.', 'err');
+    decir('Probando…');
+    try{
+      const nuevo = { url, k: clave };
+      await probarProxy(nuevo);
+      proxy = nuevo; ls.set('bae.proxy', proxy); ls.del('bae.proxy.clave');
+      // se guarda en Drive para que los otros dispositivos lo tomen solos
+      try{
+        const prev = (await listar('proxy', CARPETA_CFG))[0];
+        await subir({ id: prev && prev.id, name: 'bae-sincronizacion.json', mime: 'application/json', carpeta: CARPETA_CFG, data: JSON.stringify(proxy), props: { bae: 'proxy' } });
+      }catch(e){}
+      decir('¡Listo! La sincronización permanente quedó activa.', 'ok'); avisar(); pulso();
+      setTimeout(w.cerrar, 1800);
+    }catch(e){ decir('No funcionó: ' + e.message + '. Revisá los pasos 3 y 4.', 'err'); }
+  };
+  const q = w.$('[data-a="quitar"]'); if(q) q.onclick = () => { proxy = null; ls.del('bae.proxy'); avisar(); w.cerrar(); };
+}
+
 window.addEventListener('storage', indicador);
 setInterval(indicador, 5e3);
 document.addEventListener('visibilitychange', () => { if(visible()){ avisoCerrado = false; pulso(); } });
@@ -371,7 +527,7 @@ function elegirArchivos({ mimes = 'text/plain', titulo = 'Elegí los archivos' }
 }
 
 window.__nube = {
-  get email(){ return auth && auth.email; }, get conectado(){ return tokenOk(); },
+  get email(){ return auth && auth.email; }, get conectado(){ return conectado(); }, get permanente(){ return conProxy(); }, configurarPermanente: () => panelPermanente(),
   pedirToken, salir, carpeta, listar, bajar, bajarBlob, subir, papelera, onCambio: f => oyentes.add(f),
   olvidarCarpeta(nombre = CARPETA){ delete carpetas[nombre]; ls.set('bae.drive.carpetas', carpetas); ls.del('bae.drive.carpeta'); },
   sincronizarColeccion, elegirArchivos, precargarPicker: () => {}
