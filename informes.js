@@ -491,7 +491,7 @@ function renderMiFirma(){
   el.innerHTML = `<h3 class="sub" style="margin:0 0 6px">Mi firma</h3><div class="row" style="align-items:center">${f ? `<img src="${f}" alt="Tu firma" style="height:56px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:2px 8px">` : '<span class="hint" style="margin:0">Todavía no cargaste tu firma.</span>'}
     <button id="mfFoto">${f ? 'Cambiar por foto' : 'Subir foto de mi firma'}</button><button id="mfDib">${f ? 'Dibujar de nuevo' : 'Dibujarla'}</button>${f ? '<button id="mfGir" title="Girar 90° a la derecha">Girar ↻</button><button id="mfBor">Quitar</button>' : ''}
     <input type="file" id="mfArch" accept="image/*" hidden></div>
-    <p class="hint" style="margin:6px 0 0">Se coloca sola en informes, recibos y memorias de gas (no en presupuestos). Para la foto: firmá en una hoja blanca con birome oscura y sacala de cerca, con buena luz.</p>
+    <p class="hint" style="margin:6px 0 0">Se coloca sola en informes, protocolos SRT, recibos y memorias de gas (no en presupuestos). Para la foto: firmá en una hoja blanca con birome oscura y sacala de cerca, con buena luz.</p>
     <p class="hint" id="mfMsg" style="margin:4px 0 0"></p>`;
   el.querySelector('#mfDib').onclick = async () => { const d = await firmar('Tu firma'); if(d) setFirmaTec(d); };
   const arch = el.querySelector('#mfArch'), mm = el.querySelector('#mfMsg');

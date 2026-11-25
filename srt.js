@@ -688,6 +688,81 @@ function srtCells(){
   datos.C28 = firma; grilla.I23 = firma; g1.I12 = firma;
   return { 'DATOS (2)': datos, 'GRILLA': grilla, 'GRILLA(1)': g1 };
 }
+
+/* ---------- firma del profesional en el formulario oficial ----------
+   Se inserta la imagen de "Mi firma" sobre la línea punteada de cada hoja, como una imagen de Excel
+   (dibujo anclado a la celda). Medidas tomadas del formulario editable de la SRT. */
+const FIRMA_SRT = { 'DATOS (2)': 'C27:G27', 'GRILLA': 'I22:O22', 'GRILLA(1)': 'I11:L11' };
+const EMU_PT = 12700, NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const xAttr = (t, k) => { const m = t.match(new RegExp('\\b' + k + '="([^"]*)"')); return m ? m[1] : null; };
+const colNum = l => l.split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
+function geomHoja(xml){
+  const fp = (xml.match(/<sheetFormatPr\b[^>]*>/) || [''])[0];
+  const dRow = +xAttr(fp, 'defaultRowHeight') || 15, dCol = +xAttr(fp, 'defaultColWidth') || 11.42578125;
+  const cols = [...xml.matchAll(/<col\b([^>]*?)\/?>/g)].map(m => ({ min: +xAttr(m[1], 'min'), max: +xAttr(m[1], 'max'), w: +xAttr(m[1], 'width') }));
+  const rows = {}; for(const m of xml.matchAll(/<row\b([^>]*?)\/?>/g)){ const r = +xAttr(m[1], 'r'), ht = xAttr(m[1], 'ht'); if(r && ht) rows[r] = +ht; }
+  // ancho de columna (caracteres) → puntos, con la fórmula de Excel para Calibri 11 (7 px por carácter)
+  const colPt = c => { const k = cols.find(x => c >= x.min && c <= x.max); const w = k && k.w ? k.w : dCol; return Math.trunc((256 * w + Math.trunc(128 / 7)) / 256 * 7) * 0.75; };
+  const rowPt = r => rows[r] != null ? rows[r] : dRow;
+  const scale = (+xAttr((xml.match(/<pageSetup\b[^>]*>/) || [''])[0], 'scale') || 100) / 100;
+  return { colPt, rowPt, scale };
+}
+function anclaPt(g, x, y){        // punto (pt desde la esquina de la hoja) → celda + desplazamiento
+  let c = 1, acc = 0; while(acc + g.colPt(c) <= x && c < 16384){ acc += g.colPt(c); c++; }
+  let r = 1, accR = 0; while(accR + g.rowPt(r) <= y && r < 1048576){ accR += g.rowPt(r); r++; }
+  return { col: c - 1, colOff: Math.round((x - acc) * EMU_PT), row: r - 1, rowOff: Math.round((y - accR) * EMU_PT) };
+}
+function pngTam(u8){ const v = new DataView(u8.buffer, u8.byteOffset); return { w: v.getUint32(16), h: v.getUint32(20) }; }
+const relDir = path => path.replace(/[^/]+$/, '');
+const relsDe = path => relDir(path) + '_rels/' + path.split('/').pop() + '.rels';
+const resolver = (base, target) => { const parts = (relDir(base) + target).split('/'), out = []; parts.forEach(x => { if(x === '..') out.pop(); else if(x && x !== '.') out.push(x); }); return out.join('/'); };
+async function firmaEnFormulario(zip, map, png){
+  const tam = pngTam(png), asp = tam.w / tam.h, MEDIA = 'xl/media/bae_firma.png', RID = 'rIdBaeFirma';
+  zip.file(MEDIA, png);
+  let ct = await zip.file('[Content_Types].xml').async('string');
+  if(!/Extension="png"/i.test(ct)) ct = ct.replace('<Default ', '<Default Extension="png" ContentType="image/png"/><Default ');
+  let nDib = Object.keys(zip.files).filter(f => /^xl\/drawings\/drawing\d+\.xml$/.test(f)).length;
+  for(const [hoja, rango] of Object.entries(FIRMA_SRT)){
+    const sp = map[hoja]; if(!sp || !zip.file(sp)) continue;
+    let sx = await zip.file(sp).async('string');
+    const [a, b] = rango.split(':'), c0 = colNum(a.match(/[A-Z]+/)[0]), c1 = colNum(b.match(/[A-Z]+/)[0]), fila = +a.match(/\d+/)[0];
+    const g = geomHoja(sx);
+    let x0 = 0; for(let c = 1; c < c0; c++) x0 += g.colPt(c);
+    let ancho = 0; for(let c = c0; c <= c1; c++) ancho += g.colPt(c);
+    let yBase = 0; for(let r = 1; r <= fila; r++) yBase += g.rowPt(r);
+    // tamaño impreso parecido en todas las hojas (~1,6 cm de alto), compensando la escala de impresión de cada hoja
+    let H = 46 / g.scale, W = H * asp; if(W > ancho * 0.9){ W = ancho * 0.9; H = W / asp; }
+    const an = anclaPt(g, x0 + (ancho - W) / 2, yBase - H + 4);
+    // dibujo de la hoja (el existente o uno nuevo)
+    const relsP = relsDe(sp); let rels = zip.file(relsP) ? await zip.file(relsP).async('string') : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    const dm = sx.match(/<drawing\b[^>]*r:id="([^"]+)"/); let dp;
+    if(dm){ const rr = rels.match(new RegExp('<Relationship\\b[^>]*Id="' + dm[1] + '"[^>]*>')); dp = rr && resolver(sp, xAttr(rr[0], 'Target')); }
+    if(!dp || !zip.file(dp)){
+      nDib++; dp = 'xl/drawings/drawing' + nDib + '.xml'; while(zip.file(dp)){ nDib++; dp = 'xl/drawings/drawing' + nDib + '.xml'; }
+      zip.file(dp, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"></xdr:wsDr>');
+      ct = ct.replace('</Types>', `<Override PartName="/${dp}" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`);
+      rels = rels.replace('</Relationships>', `<Relationship Id="${RID}" Type="${NS_R}/drawing" Target="../drawings/${dp.split('/').pop()}"/></Relationships>`);
+      zip.file(relsP, rels);
+      // <drawing> va antes de legacyDrawing, picture, oleObjects, controls, tableParts y extLst
+      const tag = `<drawing r:id="${RID}"/>`, sig = sx.search(/<(legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b/);
+      sx = sig >= 0 ? sx.slice(0, sig) + tag + sx.slice(sig) : sx.replace('</worksheet>', tag + '</worksheet>');
+      if(!/xmlns:r=/.test(sx.slice(0, sx.indexOf('>', sx.indexOf('<worksheet'))))) sx = sx.replace('<worksheet', `<worksheet xmlns:r="${NS_R}"`);
+      zip.file(sp, sx);
+    }
+    let dx = await zip.file(dp).async('string');
+    if(!/<xdr:wsDr\b[^>]*xmlns:r=/.test(dx)) dx = dx.replace('<xdr:wsDr', `<xdr:wsDr xmlns:r="${NS_R}"`);
+    const ids = [...dx.matchAll(/<xdr:cNvPr\b[^>]*\bid="(\d+)"/g)].map(m => +m[1]), id = Math.max(1, ...ids) + 1;
+    dx = dx.replace('</xdr:wsDr>', `<xdr:oneCellAnchor><xdr:from><xdr:col>${an.col}</xdr:col><xdr:colOff>${an.colOff}</xdr:colOff><xdr:row>${an.row}</xdr:row><xdr:rowOff>${an.rowOff}</xdr:rowOff></xdr:from>`
+      + `<xdr:ext cx="${Math.round(W * EMU_PT)}" cy="${Math.round(H * EMU_PT)}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="Firma del profesional"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`
+      + `<xdr:blipFill><a:blip r:embed="${RID}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${Math.round(W * EMU_PT)}" cy="${Math.round(H * EMU_PT)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>`);
+    zip.file(dp, dx);
+    // relación del dibujo con la imagen
+    const drP = relsDe(dp); let dr = zip.file(drP) ? await zip.file(drP).async('string') : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    if(!dr.includes(`Id="${RID}"`)) dr = dr.replace('</Relationships>', `<Relationship Id="${RID}" Type="${NS_R}/image" Target="../media/bae_firma.png"/></Relationships>`);
+    zip.file(drP, dr);
+  }
+  zip.file('[Content_Types].xml', ct);
+}
 async function buildXlsx(){
   const bytes = tplBytes(); if(!bytes) throw new Error('notpl');
   if(!window.JSZip) throw new Error('nozip');
@@ -702,6 +777,9 @@ async function buildXlsx(){
     zip.file(path, xml);
   }
   if(st.xml) zip.file('xl/styles.xml', st.xml);
+  // firma del profesional (la de "Mis datos" en Inicio), si está cargada
+  const fT = DT.firmaTecnico ? DT.firmaTecnico() : null;
+  if(fT && /^data:image\/png;base64,/.test(fT)){ try{ const bin = atob(fT.split(',')[1]), u8 = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); await firmaEnFormulario(zip, map, u8); }catch(e){ console.warn('firma en el formulario', e); } }
   // que Excel recalcule al abrir y no use una cadena de cálculo vieja
   if(zip.file('xl/calcChain.xml')) zip.remove('xl/calcChain.xml');
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
