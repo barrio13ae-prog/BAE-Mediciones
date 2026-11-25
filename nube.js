@@ -17,7 +17,9 @@ const ss = { get(k){ try{ const v = sessionStorage.getItem(k); return v ? JSON.p
              del(k){ try{ sessionStorage.removeItem(k); }catch(e){} } };
 
 let auth = ls.get('bae.auth', null);          // { email } de la última cuenta que ingresó en este dispositivo
-let tok = ss.get('bae.tok');                  // { t: access_token, exp: ms }
+// { t: access_token, exp: ms } — se guarda en el dispositivo (no solo en la pestaña) para que la app instalada
+// siga sincronizando al cerrarla y volver a abrirla mientras el permiso de Google esté vigente (dura 1 hora)
+let tok = ls.get('bae.tok', null) || ss.get('bae.tok'); ss.del('bae.tok');
 let client = null, esperando = [];
 const oyentes = new Set();
 const avisar = () => oyentes.forEach(f => { try{ f(); }catch(e){} });
@@ -41,7 +43,7 @@ function cliente(){
     client_id: CLIENT_ID, scope: SCOPES, hd: DOMINIO, login_hint: auth && auth.email || undefined,
     callback: r => {
       const cola = esperando; esperando = [];
-      if(r && r.access_token){ tok = { t: r.access_token, exp: Date.now() + (r.expires_in || 3600) * 1000, sc: r.scope || '' }; ss.set('bae.tok', tok); cola.forEach(c => c.ok(tok.t)); }
+      if(r && r.access_token){ tok = { t: r.access_token, exp: Date.now() + (r.expires_in || 3600) * 1000, sc: r.scope || '' }; ls.set('bae.tok', tok); cola.forEach(c => c.ok(tok.t)); setTimeout(pulso, 50); }
       else cola.forEach(c => c.mal(new Error(r && r.error || 'no autorizado')));
       avisar();
     },
@@ -94,14 +96,14 @@ function pantallaIngreso(){
 }
 function salir(){
   if(tok && tok.t && window.google && google.accounts && google.accounts.oauth2){ try{ google.accounts.oauth2.revoke(tok.t, () => {}); }catch(e){} }
-  tok = null; ss.del('bae.tok'); auth = null; ls.del('bae.auth'); client = null; avisar();
+  tok = null; ls.del('bae.tok'); auth = null; ls.del('bae.auth'); client = null; avisar();
 }
 
 /* ---------- Google Drive ---------- */
 async function api(url, opt = {}, reintento){
   if(!tokenOk()) throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' });
   const r = await fetch(url, Object.assign({}, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok.t }, opt.headers || {}) }));
-  if(r.status === 401){ tok = null; ss.del('bae.tok'); avisar(); throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' }); }
+  if(r.status === 401){ tok = null; ls.del('bae.tok'); avisar(); throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' }); }
   if(!r.ok){
     if(!reintento && (r.status === 429 || r.status >= 500)){ await new Promise(x => setTimeout(x, 1500)); return api(url, opt, true); }
     let det = ''; try{ const j = await r.json(); const e = j.error || {}; const razon = (e.errors && e.errors[0] && e.errors[0].reason) || (e.details && e.details[0] && e.details[0].reason) || e.status || '';
@@ -155,9 +157,12 @@ async function sincronizarColeccion(o){
   let rem;
   try{ rem = await listar(o.tipo, o.carpeta); }
   catch(e){ if(/404/.test(e.message)){ delete carpetas[o.carpeta]; ls.set('bae.drive.carpetas', carpetas); rem = await listar(o.tipo, o.carpeta); } else throw e; }
-  let lista = o.lista().slice(), borr = o.borrados().slice(), cambio = false;
-  for(const id of borr.slice()){ await papelera(id); borr = borr.filter(x => x !== id); o.setBorrados(borr); }
-  rem = rem.filter(f => !borr.includes(f.id));
+  // cómo estaba cada registro al empezar: lo que se edite acá mientras sincroniza no se pisa al final
+  const modIni = new Map(o.lista().map(x => [x.id, +x._mod || 0]));
+  let lista = o.lista().slice(), cambio = false;
+  const borr = o.borrados().slice();
+  for(const id of borr){ await papelera(id); o.setBorrados(o.borrados().filter(x => x !== id)); }
+  rem = rem.filter(f => !borr.includes(f.id) && !o.borrados().includes(f.id));
   for(const f of rem){
     const pid = f.appProperties && f.appProperties.id, mod = +(f.appProperties && f.appProperties.mod) || 0; if(!pid) continue;
     const i = lista.findIndex(x => x.id === pid), loc = lista[i];
@@ -171,14 +176,56 @@ async function sincronizarColeccion(o){
   if(lista.length !== antes) cambio = true;
   for(const x of lista.filter(y => y._dirty || !y._driveId)){
     const limpio = Object.assign({}, x); delete limpio._dirty; delete limpio._driveId;
-    const otro = rem.find(f => f.appProperties && f.appProperties.id === x.id);
+    const otro = rem.find(f => f.appProperties && f.appProperties.id === x.id), modSubido = x._mod;
     x._driveId = await subir({ id: x._driveId || (otro && otro.id), name: o.nombre(x) + '.json', mime: 'application/json', carpeta: o.carpeta,
       data: JSON.stringify(limpio), props: { bae: o.tipo, id: x.id, mod: String(x._mod || Date.now()) } });
-    x._dirty = false; cambio = true;
+    if(x._mod === modSubido) x._dirty = false;   // si se volvió a editar mientras subía, queda pendiente para la próxima
+    cambio = true;
+  }
+  // lo que se cargó, editó o borró en este dispositivo durante la sincronización
+  const actual = o.lista(), idsAct = new Set(actual.map(x => x.id));
+  lista = lista.filter(x => !modIni.has(x.id) || idsAct.has(x.id));
+  for(const c of actual){
+    const editado = !modIni.has(c.id) || (+c._mod || 0) > modIni.get(c.id);
+    if(!editado) continue;
+    const i = lista.findIndex(x => x.id === c.id);
+    if(i >= 0){ if(lista[i] !== c){ if(!c._driveId) c._driveId = lista[i]._driveId; c._dirty = true; lista[i] = c; } }
+    else lista.push(c);
   }
   o.setLista(lista);
   return cambio;
 }
+
+/* ---------- sincronización automática ----------
+   Avisa a los módulos ("bae:sync") que traigan y suban cambios: al conectar Google, al volver a la app,
+   al recuperar internet y cada minuto mientras está abierta. Si el permiso de Google venció, muestra un aviso para reconectar. */
+const visible = () => document.visibilityState !== 'hidden';
+function pulso(){ revisarAviso(); if(auth && tokenOk() && visible() && navigator.onLine !== false) window.dispatchEvent(new Event('bae:sync')); }
+let avisoCerrado = false;
+function revisarAviso(){
+  let b = document.getElementById('baeDrive');
+  const mostrar = auth && auth.email && !tokenOk() && navigator.onLine !== false && !avisoCerrado && !document.getElementById('baeGate');
+  if(!mostrar){ if(b) b.remove(); return; }
+  if(b) return;
+  if(!document.getElementById('baeDriveCss')){
+    const c = document.createElement('style'); c.id = 'baeDriveCss';
+    c.textContent = `#baeDrive{position:fixed;left:50%;top:max(10px, env(safe-area-inset-top));transform:translateX(-50%);z-index:9000;width:calc(100% - 32px);max-width:440px;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px;background:var(--card,#fff);color:var(--ink,#0f2733);border:1px solid var(--accent,#0f2733);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+      #baeDrive span{flex:1;font-size:14px}#baeDrive button:last-child{border:none;background:none;color:var(--muted,#4a5d66);padding:6px 8px}`;
+    document.head.appendChild(c);
+  }
+  b = document.createElement('div'); b.id = 'baeDrive'; b.setAttribute('role', 'status');
+  b.innerHTML = '<span>Google Drive se desconectó: los cambios no se están sincronizando.</span><button class="primary" type="button">Reconectar</button><button type="button" aria-label="Más tarde">✕</button>';
+  const [ok, x] = b.querySelectorAll('button'), t = b.querySelector('span');
+  ok.onclick = () => { ok.disabled = true; t.textContent = 'Conectando con Google…';
+    pedirToken(false).then(() => { b.remove(); pulso(); }, e => { ok.disabled = false; t.textContent = 'No se pudo conectar: ' + e.message + '. Probá de nuevo.'; }); };
+  x.onclick = () => { avisoCerrado = true; b.remove(); };
+  document.body.appendChild(b);
+}
+oyentes.add(revisarAviso);
+document.addEventListener('visibilitychange', () => { if(visible()){ avisoCerrado = false; pulso(); } });
+window.addEventListener('online', pulso);
+window.addEventListener('offline', revisarAviso);
+setInterval(pulso, 60e3);
 
 /* ---------- selector de archivos de Drive (propio, sin Google Picker: funciona en Brave y no abre ventanas) ---------- */
 const CARP = 'application/vnd.google-apps.folder';
@@ -283,5 +330,5 @@ window.__nube = {
   sincronizarColeccion, elegirArchivos, precargarPicker: () => {}
 };
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pantallaIngreso); else pantallaIngreso();
-if(auth) cargarGsi().catch(() => {});
+if(auth){ cargarGsi().catch(() => {}); setTimeout(revisarAviso, 1500); }
 })();

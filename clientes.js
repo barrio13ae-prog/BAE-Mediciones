@@ -287,16 +287,26 @@ async function sincronizarIng(interactivo){
   return ingCorr;
 }
 
+/* Cobros de un presupuesto para el Resumen. Si está marcado "Cobrado" pero los cobros cargados no llegan al total
+   (marcado en una versión anterior, o sin registrar el pago), el saldo se cuenta como cobrado en la fecha de esa etapa. */
+function cobrosDe(x){
+  const cs = (x.cobros || []).filter(c => num(c.monto) > 0), h = x.hitos || {};
+  if(x.estado === 'cobrado'){
+    const falta = (x._total || 0) - cs.reduce((a, c) => a + num(c.monto), 0);
+    if(falta > 0.5) cs.push({ fecha: h.cobrado || x.fecha, monto: falta });
+  }
+  return cs;
+}
 function datosMes(m){
   const pres = (window.__presu && window.__presu.lista) || [], infs = (window.__informes && window.__informes.lista) || [];
-  const cob = x => (x.cobros || []).reduce((a, c) => a + num(c.monto), 0);
+  const cob = x => cobrosDe(x).reduce((a, c) => a + num(c.monto), 0);
   const pm = pres.filter(x => enMes(x.fecha, m));
   // ingresos del mes por rubro: cobros de presupuestos (según su rubro) + ingresos sin presupuesto
   const porRubro = {};
-  pres.forEach(x => (x.cobros || []).filter(c => enMes(c.fecha, m)).forEach(c => { const k = x.rubro || 'elec'; porRubro[k] = (porRubro[k] || 0) + num(c.monto); }));
+  pres.forEach(x => cobrosDe(x).filter(c => enMes(c.fecha, m)).forEach(c => { const k = x.rubro || 'elec'; porRubro[k] = (porRubro[k] || 0) + num(c.monto); }));
   const im = ingresos.filter(x => enMes(x.fecha, m));
   im.forEach(x => { const k = x.rubro || 'otro'; porRubro[k] = (porRubro[k] || 0) + num(x.monto); });
-  const cobPres = pres.reduce((a, x) => a + (x.cobros || []).filter(c => enMes(c.fecha, m)).reduce((s, c) => s + num(c.monto), 0), 0);
+  const cobPres = pres.reduce((a, x) => a + cobrosDe(x).filter(c => enMes(c.fecha, m)).reduce((s, c) => s + num(c.monto), 0), 0);
   const sueltos = im.reduce((a, x) => a + num(x.monto), 0);
   return {
     cobPres, sueltos, ingMes: im, porRubro,
@@ -408,6 +418,8 @@ function alEntrar(){
   if(h === '#inicio' || h === '' || h === '#') renderVencimientos();
 }
 window.addEventListener('hashchange', alEntrar);
+// sincronización automática (nube.js): clientes e ingresos sin presupuesto
+window.addEventListener('bae:sync', () => { sincronizar(false); sincronizarIng(false); });
 actualizarDatalist(); renderVencimientos();
 if(N && N.email) setTimeout(() => { sincronizar(false); sincronizarIng(false); }, 1200);
 window.__clientes = { get lista(){ return lista; }, upsert, estadoSrt, waLink, sincronizar };

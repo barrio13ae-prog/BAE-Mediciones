@@ -854,6 +854,7 @@ window.__gasRender = () => { renderAll(); renderLista(); };
 const alEntrar = () => { if((location.hash || '').replace('#', '') === 'gas'){ renderAll(); renderLista(); sincronizar(false); } };
 window.addEventListener('hashchange', alEntrar);
 if(N && N.onCambio) N.onCambio(() => { if(location.hash === '#gas') sincronizar(false); });
+window.addEventListener('bae:sync', () => { if(location.hash === '#gas') sincronizar(false); });
 APP.route(); alEntrar();
 
 })();

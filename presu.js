@@ -427,7 +427,10 @@ function bind(){
     catch(e){ msg('No se pudo compartir. Datos: ' + t.replace(/\n/g, ' · '), true); }
   };
   $$('[data-etapa]', v).forEach(b => b.onclick = () => marcarEtapa(b.dataset.etapa));
-  $$('[data-hfecha]', v).forEach(el => el.onchange = () => { if(el.value){ P.hitos[el.dataset.hfecha] = el.value; seguir(); } });
+  $$('[data-hfecha]', v).forEach(el => el.onchange = () => { if(!el.value) return; const s = el.dataset.hfecha, antes = P.hitos[s];
+    // si se corrige la fecha de "Cobrado", el cobro que se registró solo al marcarlo pasa a esa fecha (cuenta en ese mes del Resumen)
+    if(s === 'cobrado') P.cobros.forEach(c => { if(c.auto || (c.fecha === antes && (c.nota === 'Pago total' || c.nota === 'Saldo'))) c.fecha = el.value; });
+    P.hitos[s] = el.value; seguir(); });
   $$('[data-cob]', v).forEach(el => el.addEventListener('change', persistirCobros));
   $$('[data-cob]', v).forEach(el => el.addEventListener('input', () => { P.cobros[+el.dataset.cob][el.dataset.cf] = el.value; guardarActual(); const sd = $('#pzSaldo', v); if(sd) sd.textContent = '$ ' + money(total() - cobrado(P)); const cb = $('#pzCobrado', v); if(cb) cb.textContent = '$ ' + money(cobrado(P)); }));
   $$('[data-cobdel]', v).forEach(b => b.onclick = () => { P.cobros.splice(+b.dataset.cobdel, 1); guardarActual(); persistirCobros(); render(); document.getElementById('pzSeg').scrollIntoView({ block: 'center' }); });
@@ -690,10 +693,13 @@ const sinMeta = x => { const o = Object.assign({}, x); ['_total', '_mod', '_dirt
 const igualGuardado = (a, b) => sinMeta(a) === sinMeta(b);
 let sinc = { txt: '', err: false }, sincronizando = null, otraVez = false;
 const horaCorta = t => { const d = new Date(t); return p2(d.getHours()) + ':' + p2(d.getMinutes()); };
+function txtNube(){
+  const ult = store.get('bae.drive.ult', 0);
+  return ult ? 'Drive al día · ' + (new Date(ult).toDateString() === new Date().toDateString() ? 'hoy ' + horaCorta(ult) : fmtD(new Date(ult).toISOString().slice(0, 10))) : 'Todavía no se sincronizó.';
+}
 function nubeHTML(){
   if(!N || !N.email) return '';
-  const ult = store.get('bae.drive.ult', 0);
-  const txt = sinc.txt || (ult ? 'Drive al día · ' + (new Date(ult).toDateString() === new Date().toDateString() ? 'hoy ' + horaCorta(ult) : fmtD(new Date(ult).toISOString().slice(0, 10))) : 'Todavía no se sincronizó.');
+  const txt = sinc.txt || txtNube();
   return `<div class="pz-nube${sinc.err ? ' err' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/></svg><span class="t" id="pzNubeTxt">${esc(txt)}</span><button id="pzSync" title="Sincronizar ahora" aria-label="Sincronizar ahora">↻</button></div>`;
 }
 function estado(t, err){ sinc = { txt: t, err: !!err }; const e = $('#pzNubeTxt', v); if(e){ e.textContent = t; e.closest('.pz-nube').classList.toggle('err', !!err); } }
@@ -726,6 +732,8 @@ async function sincronizar(interactivo){
         const i = lista.findIndex(x => x.id === pid), loc = lista[i];
         if(!loc || (!loc._dirty && (+loc._mod || 0) < mod)){
           const d = await N.bajar(f.id); Object.assign(d, { id: pid, _driveId: f.id, _mod: mod, _dirty: false, _pdfId: loc ? loc._pdfId : d._pdfId }); normHitos(d);
+          const j = lista.findIndex(x => x.id === pid);
+          if(loc ? lista[j] !== loc : j >= 0) continue;     // se guardó acá mientras bajaba: manda lo de acá
           // si ese presupuesto está abierto acá y no tiene cambios sin guardar, se muestra la versión nueva
           if(loc && P.id === pid && igualGuardado(P, loc)){ P = normHitos(JSON.parse(JSON.stringify(d))); guardarActual(); }
           if(i >= 0) lista[i] = d; else lista.push(d); cambio = true;
@@ -733,7 +741,7 @@ async function sincronizar(interactivo){
       }
       // 3. borrados en otro dispositivo
       const ids = new Set(rem.map(f => f.id)), antes = lista.length;
-      lista = lista.filter(x => !(x._driveId && !x._dirty && !ids.has(x._driveId)));
+      lista = lista.filter(x => !(x._driveId && !x._dirty && !ids.has(x._driveId) && !borrados.includes(x._driveId)));
       if(lista.length !== antes) cambio = true;
       // 4. subir lo guardado acá
       for(const x of lista.filter(y => y._dirty || !y._driveId)){ /* también los guardados antes de conectar Drive */
@@ -773,7 +781,8 @@ async function sincronizar(interactivo){
     }finally{
       sincronizando = null;
       if(cambio) window.dispatchEvent(new Event('bae:presu-cambio')); // Resumen y Clientes se actualizan
-      if(cambio || !sinc.err) refrescarLista(); else { const t = $('#pzNubeTxt', v); if(t) t.textContent = sinc.txt; }
+      // la pantalla se redibuja solo si llegó algo nuevo (la sincronización automática corre cada minuto)
+      if(cambio) refrescarLista(); else { const t = $('#pzNubeTxt', v); if(t){ t.textContent = sinc.txt || txtNube(); t.closest('.pz-nube').classList.toggle('err', !!sinc.err); } }
       if(otraVez){ otraVez = false; sincronizar(false); }
     }
   })();
@@ -781,7 +790,7 @@ async function sincronizar(interactivo){
 }
 if(N){
   N.onCambio(() => { if(location.hash === '#presu' && !editando()) render(); });
-  window.addEventListener('online', () => sincronizar(false));
+  window.addEventListener('bae:sync', () => sincronizar(false));   // sincronización automática (nube.js)
   v.addEventListener('click', e => {
     if(e.target.id === 'pzSync'){ sincronizar(true); }
     if(e.target.id === 'pzSalir'){ e.preventDefault(); N.salir(); location.reload(); }
