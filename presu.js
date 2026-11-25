@@ -571,7 +571,7 @@ async function recibo(i){
     concepto: `${concepto} del presupuesto N° ${P.numero}${P.obra ? ' - ' + P.obra : ''}${P.direccion ? ', en ' + P.direccion : ''}`,
     filas: [['Total del presupuesto', '$ ' + money(total())], ['Este pago', '$ ' + money(monto)], ['Total pagado a la fecha', '$ ' + money(hasta)], ['Saldo pendiente', '$ ' + money(Math.max(0, total() - hasta))]],
     resaltar: [1, 3] });
-  msg(ok ? 'Recibo N° ' + nro + ' listo.' : 'No se pudo descargar el recibo.', !ok);
+  msg(ok ? 'Recibo N° ' + nro + ' listo.' + (DT.firmaTecnico && DT.firmaTecnico() ? '' : ' Salió sin firma: cargala en Inicio → Mis datos → Mi firma.') : 'No se pudo descargar el recibo.', !ok);
 }
 
 /* ---------- PDF ---------- */

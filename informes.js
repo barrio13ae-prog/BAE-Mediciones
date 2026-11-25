@@ -419,6 +419,7 @@ function firmaDeImagen(file){
       URL.revokeObjectURL(url);
       const k = Math.min(1, 1400 / Math.max(img.width, img.height)), W = Math.round(img.width * k), H = Math.round(img.height * k);
       const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d');
+      cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, H);   // lo transparente (PNG sin fondo) cuenta como papel blanco
       cx.drawImage(img, 0, 0, W, H);
       const id = cx.getImageData(0, 0, W, H), d = id.data, lum = new Float32Array(W * H);
       for(let i = 0; i < W * H; i++) lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];

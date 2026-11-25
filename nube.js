@@ -299,7 +299,7 @@ function indicador(){
   el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ico}</svg><span>${txt}</span>`;
 }
 oyentes.add(indicador);
-const VERSION = '63';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
+const VERSION = '64';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
 document.addEventListener('click', e => { if(e.target.closest('[data-drive-opc]')){ e.preventDefault(); panelNube(); } });
 function pieVersion(){
   const home = window.__app && window.__app.VIEWS && window.__app.VIEWS.inicio && window.__app.VIEWS.inicio.el;

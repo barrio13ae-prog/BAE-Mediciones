@@ -540,7 +540,7 @@ function bindIngresos(){
       let ok = false;
       try{ ok = await window.__presu.reciboPdf({ nro: rec.nroRecibo, fecha: rec.fecha, cliente: rec.cliente, monto: num(rec.monto), forma: ({ efectivo: 'en efectivo', transferencia: 'por transferencia' })[rec.forma] || '',
         concepto: rec.tipo === 'emergencia' ? `servicio de emergencia (${rub})` : `trabajos de ${rub}`, detalle, direccion: rec.direccion }); }catch(e){}
-      const m = $('#igAviso', vRes); if(m){ m.textContent = ok ? `Recibo N° ${rec.nroRecibo} descargado.` : 'No se pudo generar el recibo. Abrí la app con internet una vez.'; m.classList.toggle('err', !ok); m.scrollIntoView({ block: 'center' }); }
+      const m = $('#igAviso', vRes); if(m){ m.textContent = ok ? `Recibo N° ${rec.nroRecibo} descargado.` + (window.__dt && window.__dt.firmaTecnico && window.__dt.firmaTecnico() ? '' : ' Salió sin firma: cargala en Inicio → Mis datos → Mi firma.') : 'No se pudo generar el recibo. Abrí la app con internet una vez.'; m.classList.toggle('err', !ok); m.scrollIntoView({ block: 'center' }); }
     }
   };
   $('#igGuardar', vRes).onclick = () => guardarIngreso(false);
