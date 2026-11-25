@@ -802,7 +802,10 @@ async function sincronizar(interactivo){
       }
       // 3. borrados en otro dispositivo
       const ids = new Set(rem.map(f => f.id)), antes = lista.length;
-      lista = lista.filter(x => !(x._driveId && !x._dirty && !ids.has(x._driveId) && !borrados.includes(x._driveId)));
+      const enDrive = lista.filter(x => x._driveId && !x._dirty && !borrados.includes(x._driveId)), faltan = enDrive.filter(x => !ids.has(x._driveId));
+      // si de golpe falta todo (3 o más), es más probable un problema de lectura que un borrado real: no se borra nada
+      if(!(faltan.length >= 3 && faltan.length === enDrive.length))
+        lista = lista.filter(x => !(x._driveId && !x._dirty && !ids.has(x._driveId) && !borrados.includes(x._driveId)));
       if(lista.length !== antes) cambio = true;
       // 4. subir lo guardado acá
       for(const x of lista.filter(y => y._dirty || !y._driveId)){ /* también los guardados antes de conectar Drive */

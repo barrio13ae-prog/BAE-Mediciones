@@ -43,7 +43,7 @@ function cliente(){
     client_id: CLIENT_ID, scope: SCOPES, hd: DOMINIO, login_hint: auth && auth.email || undefined,
     callback: r => {
       const cola = esperando; esperando = [];
-      if(r && r.access_token){ tok = { t: r.access_token, exp: Date.now() + (r.expires_in || 3600) * 1000, sc: r.scope || '' }; ls.set('bae.tok', tok); cola.forEach(c => c.ok(tok.t)); setTimeout(() => { adoptarProxy().finally(pulso); }, 50); }
+      if(r && r.access_token){ tok = { t: r.access_token, exp: Date.now() + (r.expires_in || 3600) * 1000, sc: r.scope || '' }; ls.set('bae.tok', tok); cola.forEach(c => c.ok(tok.t)); setTimeout(() => { (proxyCfg ? migrar() : adoptarProxy()).finally(pulso); }, 50); }
       else cola.forEach(c => c.mal(new Error(r && r.error || 'no autorizado')));
       avisar();
     },
@@ -106,12 +106,13 @@ let enCurso = 0, ultOk = ls.get('bae.drive.ultOk', 0), ultErr = '';
    Un script de Google Apps Script en la cuenta del usuario hace los pedidos a Drive en nombre de la app.
    Su permiso no vence cada hora como el de la ventana de Google, así que la app sincroniza sin pedir reconectar.
    proxy = { url, k } (dirección de la aplicación web y clave compartida). */
-let proxy = ls.get('bae.proxy', null);
-const conProxy = () => !!(proxy && proxy.url && proxy.k);
+let proxyCfg = ls.get('bae.proxy', null);           // configuración guardada
+let propsOk = !!ls.get('bae.props.ok', false);       // etiquetas de Drive ya visibles para el script
+const conProxy = () => !!(propsOk && proxyCfg && proxyCfg.url && proxyCfg.k);
 const conectado = () => conProxy() || tokenOk();
 function aB64(u8){ let s = ''; for(let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
 function deB64(t){ const s = atob(t || ''), u8 = new Uint8Array(s.length); for(let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i); return u8; }
-async function porProxy(url, opt = {}, p = proxy){
+async function porProxy(url, opt = {}, p = proxyCfg){
   const h = opt.headers || {}, body = opt.body;
   const b = body == null ? '' : aB64(body instanceof Blob ? new Uint8Array(await body.arrayBuffer()) : new TextEncoder().encode(String(body)));
   let r;
@@ -123,13 +124,13 @@ async function porProxy(url, opt = {}, p = proxy){
   return new Response(s === 204 || s === 304 ? null : deB64(j.b), { status: s, headers: { 'Content-Type': j.ct || 'application/octet-stream' } });
 }
 async function api(url, opt = {}, reintento){
-  const via = conProxy();
+  const via = opt.via ? opt.via === 'proxy' : conProxy();
   if(!via && !tokenOk()) throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' });
   enCurso++; indicador();
   let r;
   const directo = () => fetch(url, Object.assign({}, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok.t }, opt.headers || {}) }));
   try{
-    if(via){ try{ r = await porProxy(url, opt); }catch(e){ if(e.code === 'PROXY' && tokenOk() && navigator.onLine !== false) r = await directo(); else throw e; } }
+    if(via){ try{ r = await porProxy(url, opt, proxyCfg); }catch(e){ if(!opt.via && e.code === 'PROXY' && tokenOk() && navigator.onLine !== false) r = await directo(); else throw e; } }
     else r = await directo();
   }
   catch(e){ ultErr = navigator.onLine === false ? '' : e.code === 'PROXY' ? e.message : 'sin conexión con Drive'; throw e; }
@@ -163,16 +164,17 @@ async function carpeta(nombre = CARPETA){
 async function listar(tipo, nombreCarpeta){
   const c = await carpeta(nombreCarpeta); let out = [], page = '';
   do{
-    const q = encodeURIComponent(`'${c}' in parents and trashed=false and appProperties has { key='bae' and value='${tipo}' }`);
-    const r = await (await api(`${API}/files?q=${q}&pageSize=1000&fields=nextPageToken,files(id,name,appProperties)${page ? '&pageToken=' + page : ''}`)).json();
-    out = out.concat(r.files || []); page = r.nextPageToken || '';
+    // "appProperties" solo las ve la aplicación que las puso (la app o el script); "properties" las ven las dos
+    const q = encodeURIComponent(`'${c}' in parents and trashed=false and (properties has { key='bae' and value='${tipo}' } or appProperties has { key='bae' and value='${tipo}' })`);
+    const r = await (await api(`${API}/files?q=${q}&pageSize=1000&fields=nextPageToken,files(id,name,appProperties,properties)${page ? '&pageToken=' + page : ''}`)).json();
+    out = out.concat((r.files || []).map(f => Object.assign(f, { appProperties: Object.assign({}, f.appProperties, f.properties) }))); page = r.nextPageToken || '';
   } while(page);
   return out;
 }
 async function bajar(id){ return (await api(`${API}/files/${id}?alt=media`)).json(); }
 async function bajarBlob(id){ return (await api(`${API}/files/${id}?alt=media`)).blob(); }
 async function subir({ id, name, mime, data, props, carpeta: nombreCarpeta }){
-  const meta = { name, mimeType: mime, appProperties: props };
+  const meta = { name, mimeType: mime, appProperties: props, properties: props };
   if(!id) meta.parents = [await carpeta(nombreCarpeta)];
   const b = 'bae' + Math.random().toString(36).slice(2);
   const body = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: ${mime}\r\n\r\n`, data, `\r\n--${b}--`]);
@@ -206,7 +208,10 @@ async function sincronizarColeccion(o){
     } else if(!loc._driveId) loc._driveId = f.id;
   }
   const ids = new Set(rem.map(f => f.id)), antes = lista.length;
-  lista = lista.filter(x => !(x._driveId && !x._dirty && !ids.has(x._driveId)));
+  const enDrive = lista.filter(x => x._driveId && !x._dirty), faltan = enDrive.filter(x => !ids.has(x._driveId));
+  // si de golpe falta todo (3 o más), es más probable un problema de lectura que un borrado real: no se borra nada
+  if(!(faltan.length >= 3 && faltan.length === enDrive.length))
+    lista = lista.filter(x => !(x._driveId && !x._dirty && !ids.has(x._driveId)));
   if(lista.length !== antes) cambio = true;
   for(const x of lista.filter(y => y._dirty || !y._driveId)){
     const limpio = Object.assign({}, x); delete limpio._dirty; delete limpio._driveId;
@@ -294,7 +299,7 @@ function indicador(){
   el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ico}</svg><span>${txt}</span>`;
 }
 oyentes.add(indicador);
-const VERSION = '58';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
+const VERSION = '59';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
 document.addEventListener('click', e => { if(e.target.closest('[data-drive-opc]')){ e.preventDefault(); panelNube(); } });
 function pieVersion(){
   const home = window.__app && window.__app.VIEWS && window.__app.VIEWS.inicio && window.__app.VIEWS.inicio.el;
@@ -302,17 +307,49 @@ function pieVersion(){
   const p = document.createElement('p'); p.id = 'baeVer'; p.style.cssText = 'text-align:center;font-size:12px;color:var(--muted,#4a5d66);margin:8px 0 0';
   p.textContent = 'Versión ' + VERSION; home.appendChild(p);
 }
+
+/* Migración (una vez): copia la etiqueta privada "appProperties" a "properties" en los archivos de la app,
+   para que el script de sincronización permanente los encuentre. Se hace con el permiso de la app (directo)
+   y también por el script, para los archivos que el script ya haya creado. Necesita Google conectado. */
+const TIPOS = ['presu', 'pdf', 'cfg', 'cli', 'ing', 'inf', 'aj', 'ins', 'foto', 'gas', 'proxy'];
+let migrando = null;
+function migrar(){
+  if(propsOk || !proxyCfg || !tokenOk()) return Promise.resolve();
+  if(migrando) return migrando;
+  migrando = (async () => {
+    const vias = ['directo']; try{ await probarProxy(proxyCfg); vias.push('proxy'); }catch(e){}
+    for(const via of vias) for(const t of TIPOS){
+      let page = '';
+      do{
+        const q = encodeURIComponent(`trashed=false and appProperties has { key='bae' and value='${t}' }`);
+        const r = await (await api(`${API}/files?q=${q}&pageSize=1000&fields=nextPageToken,files(id,appProperties,properties)${page ? '&pageToken=' + page : ''}`, { via })).json();
+        for(const f of r.files || []){
+          const ap = f.appProperties || {}, pr = f.properties || {};
+          if(pr.bae === ap.bae && pr.id === ap.id && pr.mod === ap.mod) continue;
+          await api(`${API}/files/${f.id}?fields=id`, { via, method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ properties: ap }) });
+        }
+        page = r.nextPageToken || '';
+      } while(page);
+    }
+    propsOk = true; ls.set('bae.props.ok', true);
+    // la configuración del script también queda visible para los otros dispositivos
+    try{ const prev = (await listar('proxy', CARPETA_CFG))[0];
+      await subir({ id: prev && prev.id, name: 'bae-sincronizacion.json', mime: 'application/json', carpeta: CARPETA_CFG, data: JSON.stringify(proxyCfg), props: { bae: 'proxy' } }); }catch(e){}
+    avisar();
+  })().catch(e => { ultErr = 'no se pudieron preparar los archivos de Drive: ' + e.message; }).finally(() => { migrando = null; indicador(); });
+  return migrando;
+}
 /* ---------- panel del indicador y configuración de la sincronización permanente ---------- */
 const CARPETA_CFG = CARPETA;
 async function adoptarProxy(){
-  if(conProxy() || !tokenOk()) return;
+  if(proxyCfg || !tokenOk()) return;
   try{
     const f = (await listar('proxy', CARPETA_CFG))[0]; if(!f) return;
     const c = await bajar(f.id); if(!c || !c.url || !c.k) return;
-    await probarProxy(c); proxy = { url: c.url, k: c.k }; ls.set('bae.proxy', proxy); indicador();
+    await probarProxy(c); proxyCfg = { url: c.url, k: c.k }; ls.set('bae.proxy', proxyCfg); await migrar(); indicador();
   }catch(e){}
 }
-if(auth && !conProxy() && tokenOk()) setTimeout(() => adoptarProxy(), 2500);
+if(auth && tokenOk()) setTimeout(() => { (proxyCfg ? migrar() : adoptarProxy()).finally(() => { indicador(); pulso(); }); }, 2500);
 async function probarProxy(p){
   const r = await porProxy('https://www.googleapis.com/drive/v3/about?fields=user', {}, p);
   if(!r.ok) throw new Error('Drive respondió ' + r.status + ' al probar el servicio');
@@ -384,7 +421,7 @@ function panelNube(){
   const w = abrirPanel(`<header><b>Google Drive</b><small style="color:var(--muted,#4a5d66)">v${VERSION}</small><button class="x" data-cerrar aria-label="Cerrar">×</button></header>
     <div class="estado">${escH(estado)}</div>
     <div class="fila">${conectado() ? '<button class="primary" data-a="sync">Sincronizar ahora</button>' : '<button class="primary" data-a="con">Reconectar Google Drive</button>'}</div>
-    <p><b>Sincronización permanente:</b> ${conProxy() ? 'activa. La app no necesita reconectar Google.' : 'desactivada. Sin ella, Google pide reconectar cada hora.'}</p>
+    <p><b>Sincronización permanente:</b> ${conProxy() ? 'activa. La app no necesita reconectar Google.' : proxyCfg ? (migrando ? 'preparando los archivos de Drive…' : 'configurada, pero falta un paso: tocá <b>Reconectar Google Drive</b> una vez para preparar los archivos de Drive.') : 'desactivada. Sin ella, Google pide reconectar cada hora.'}</p>
     <div class="fila"><button data-a="perm">${conProxy() ? 'Ver o cambiar la configuración' : 'Configurar sincronización permanente'}</button></div>
     <div class="msg"></div>`);
   const m = w.$('.msg');
@@ -393,7 +430,7 @@ function panelNube(){
   w.$('[data-a="perm"]').onclick = () => { w.cerrar(); panelPermanente(); };
 }
 function panelPermanente(){
-  let clave = (proxy && proxy.k) || ls.get('bae.proxy.clave', '');
+  let clave = (proxyCfg && proxyCfg.k) || ls.get('bae.proxy.clave', '');
   if(!clave){ const a = new Uint8Array(24); crypto.getRandomValues(a); clave = Array.from(a, x => x.toString(16).padStart(2, '0')).join(''); ls.set('bae.proxy.clave', clave); }
   const codigo = codigoScript(clave);
   const w = abrirPanel(`<header><b>Sincronización permanente</b><button class="x" data-cerrar aria-label="Cerrar">×</button></header>
@@ -404,7 +441,7 @@ function panelPermanente(){
       <li>Abrí <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com</a> con tu cuenta <b>${escH((auth && auth.email) || '@' + DOMINIO)}</b>. Se abre un proyecto nuevo: borrá lo que tiene, pegá el código y guardá (ícono del disquete). Ponele de nombre <b>BAE Sincronización</b>.</li>
       <li>Arriba, al lado de “Depurar”, elegí la función <b>autorizar</b> y tocá <b>Ejecutar</b>. Google pide permisos: <b>Revisar permisos</b> → tu cuenta → <b>Permitir</b>. (Si aparece “Google no verificó esta app”: <b>Configuración avanzada</b> → <b>Ir a BAE Sincronización</b>.)</li>
       <li>Arriba a la derecha: <b>Implementar</b> → <b>Nueva implementación</b> → en el engranaje elegí <b>Aplicación web</b>. Ejecutar como: <b>Yo</b>. Quién tiene acceso: <b>Cualquier usuario</b>. Tocá <b>Implementar</b> y copiá la <b>URL de la aplicación web</b> (termina en <b>/exec</b>).</li>
-      <li>Pegala acá y probá:<input id="bnpUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${escH((proxy && proxy.url) || '')}" inputmode="url" autocomplete="off"></li>
+      <li>Pegala acá y probá:<input id="bnpUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${escH((proxyCfg && proxyCfg.url) || '')}" inputmode="url" autocomplete="off"></li>
     </ol>
     <div class="fila"><button class="primary" data-a="probar">Probar y activar</button>${conProxy() ? '<button data-a="quitar">Desactivar en este dispositivo</button>' : ''}</div>
     <div class="msg"></div>`);
@@ -418,17 +455,21 @@ function panelPermanente(){
     try{
       const nuevo = { url, k: clave };
       await probarProxy(nuevo);
-      proxy = nuevo; ls.set('bae.proxy', proxy); ls.del('bae.proxy.clave');
+      proxyCfg = nuevo; ls.set('bae.proxy', proxyCfg); ls.del('bae.proxy.clave');
+      if(!propsOk){
+        if(!tokenOk()){ decir('El script responde bien. Falta un paso: tocá "Reconectar Google Drive" (una sola vez) para preparar los archivos de Drive.', 'err'); avisar(); return; }
+        decir('Preparando los archivos de Drive…'); await migrar();
+      }
       // se guarda en Drive para que los otros dispositivos lo tomen solos
       try{
         const prev = (await listar('proxy', CARPETA_CFG))[0];
-        await subir({ id: prev && prev.id, name: 'bae-sincronizacion.json', mime: 'application/json', carpeta: CARPETA_CFG, data: JSON.stringify(proxy), props: { bae: 'proxy' } });
+        await subir({ id: prev && prev.id, name: 'bae-sincronizacion.json', mime: 'application/json', carpeta: CARPETA_CFG, data: JSON.stringify(proxyCfg), props: { bae: 'proxy' } });
       }catch(e){}
       decir('¡Listo! La sincronización permanente quedó activa.', 'ok'); avisar(); pulso();
       setTimeout(w.cerrar, 1800);
     }catch(e){ decir('No funcionó: ' + e.message + '. Revisá los pasos 3 y 4.', 'err'); }
   };
-  const q = w.$('[data-a="quitar"]'); if(q) q.onclick = () => { proxy = null; ls.del('bae.proxy'); avisar(); w.cerrar(); };
+  const q = w.$('[data-a="quitar"]'); if(q) q.onclick = () => { proxyCfg = null; ls.del('bae.proxy'); avisar(); w.cerrar(); };
 }
 
 window.addEventListener('storage', indicador);
