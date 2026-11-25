@@ -439,7 +439,7 @@ function bind(){
   const wa = $('#pzWa', v); if(wa) wa.onclick = () => pdf(true);
   $('#pzNuevo', v).onclick = () => { P = nuevo(); guardarActual(); render(); msg('Presupuesto nuevo N° ' + P.numero + '.'); };
   $('#pzGuardar', v).onclick = guardarClick;
-  $('#pzPdf', v).onclick = pdf;
+  $('#pzPdf', v).onclick = () => pdf(false);
   bindLista();
 }
 /* ---------- seguimiento: cada cambio se guarda en "Mis presupuestos" sin limpiar el formulario ---------- */
@@ -664,12 +664,13 @@ async function pdf(envio){
     const texto = `Hola${nom ? ' ' + nom : ''}, ¿cómo estás? Te envío el presupuesto N° ${P.numero}${P.obra ? ' por ' + P.obra : ''}. Total: $ ${money(total())}. Cualquier consulta, quedo a disposición. ${(pf.nombre || '').split(' ')[0]} – ${pf.empresa || ''}`.trim();
     const file = typeof File === 'function' ? new File([blobPdf], name, { type: 'application/pdf' }) : null;
     let ok = false;
-    if(file && navigator.canShare && navigator.canShare({ files: [file] })){
+    const celular = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if(celular && file && navigator.canShare && navigator.canShare({ files: [file] })){
       try{ await navigator.share({ files: [file], text: texto }); ok = true; }
       catch(e){ if(e && e.name === 'AbortError'){ msg('Envío cancelado. El presupuesto quedó guardado.'); return; } }
     }
     if(!ok){ if(DT.save) await DT.save(name, blobPdf); window.open(waLink(P.telCliente, texto), '_blank', 'noopener'); }
-    terminarYLimpiar('Presupuesto enviado y guardado como "Enviado".');
+    terminarYLimpiar(ok ? 'Presupuesto enviado y guardado como "Enviado".' : 'Descargué el PDF y abrí WhatsApp: adjuntalo en el chat. Quedó guardado como "Enviado".');
     return;
   }
   const ok = DT.save ? await DT.save(name, blobPdf) : false;
