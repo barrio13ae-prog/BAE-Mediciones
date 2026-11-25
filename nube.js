@@ -264,7 +264,7 @@ function revisarAviso(){
 oyentes.add(revisarAviso);
 
 /* Indicador en el encabezado de todas las pantallas: al día / sincronizando / cambios sin subir / desconectado */
-const LISTAS = ['bae.presu.lista', 'bae.cli.lista', 'bae.ing.lista', 'bae.inf.lista', 'bae.gas.lista'];
+const LISTAS = ['bae.presu.lista', 'bae.cli.lista', 'bae.ing.lista', 'bae.inf.lista', 'bae.gas.lista', 'bae.gst.lista', 'bae.ag.lista'];
 // cuenta los registros marcados para subir sin interpretar las listas enteras (los informes pueden pesar bastante)
 const pendientes = () => LISTAS.reduce((a, k) => { let t = ''; try{ t = localStorage.getItem(k) || ''; }catch(e){} return a + (t.match(/"_dirty":true/g) || []).length; }, 0);
 const hhmm = t => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
@@ -300,7 +300,7 @@ function indicador(){
   el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ico}</svg><span>${txt}</span>`;
 }
 oyentes.add(indicador);
-const VERSION = '67';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
+const VERSION = '68';   // subirla junto con CACHE en sw.js: se muestra al pie de Inicio y en el panel de Drive
 document.addEventListener('click', e => { if(e.target.closest('[data-drive-opc]')){ e.preventDefault(); panelNube(); } });
 function pieVersion(){
   const home = window.__app && window.__app.VIEWS && window.__app.VIEWS.inicio && window.__app.VIEWS.inicio.el;
@@ -312,7 +312,7 @@ function pieVersion(){
 /* Migración (una vez): copia la etiqueta privada "appProperties" a "properties" en los archivos de la app,
    para que el script de sincronización permanente los encuentre. Se hace con el permiso de la app (directo)
    y también por el script, para los archivos que el script ya haya creado. Necesita Google conectado. */
-const TIPOS = ['presu', 'pdf', 'cfg', 'cli', 'ing', 'inf', 'aj', 'ins', 'foto', 'gas', 'proxy'];
+const TIPOS = ['presu', 'pdf', 'cfg', 'cli', 'ing', 'inf', 'aj', 'ins', 'foto', 'gas', 'proxy', 'srttpl', 'gst', 'ag'];
 let migrando = null;
 function migrar(){
   if(propsOk || !proxyCfg || !tokenOk()) return Promise.resolve();

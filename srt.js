@@ -608,6 +608,7 @@ async function loadTemplate(file){
     if(!store.setRaw(TPL_KEY, b64(buf))) setMsg('#xlsxMsg', 'Formulario leído, pero este navegador no permite guardarlo: vas a tener que cargarlo cada vez.', true);
     else setMsg('#xlsxMsg', 'Formulario oficial cargado.');
     tplMem = buf; updateTplInfo();
+    store.setRaw('srt.tpl.mod', String(Date.now())); store.setRaw('srt.tpl.subido', '0'); syncTpl();
   } catch(e){ setMsg('#xlsxMsg', e.message === 'notpl' ? 'Ese archivo no parece el formulario editable de la Res. SRT 900/15 (faltan las hojas DATOS y GRILLA).' : 'No pude leer el archivo.', true); }
 }
 let tplMem = null;
@@ -616,6 +617,29 @@ function tplBytes(){
   const s = store.raw(TPL_KEY); if(!s) return null;
   const bin = atob(s), u = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u;
 }
+/* el formulario oficial se guarda también en Drive: se carga una vez y queda en todos los dispositivos */
+const NB = window.__nube, TPL_CARP = 'BAE Informes', XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+let tplSinc = null;
+function syncTpl(){
+  if(!NB || !NB.email || !NB.conectado || tplSinc) return tplSinc;
+  tplSinc = (async () => {
+    const locMod = +store.raw('srt.tpl.mod') || 0, subido = store.raw('srt.tpl.subido') === '1';
+    const f = (await NB.listar('srttpl', TPL_CARP))[0], remMod = f ? +((f.appProperties || {}).mod) || 0 : 0;
+    if(f && remMod > locMod){
+      const buf = await (await NB.bajarBlob(f.id)).arrayBuffer();
+      if(store.setRaw(TPL_KEY, b64(buf))){ store.setRaw('srt.tpl.mod', String(remMod)); store.setRaw('srt.tpl.subido', '1'); }
+      tplMem = buf; updateTplInfo();
+    } else if(store.raw(TPL_KEY) && (!subido || remMod < locMod)){
+      const mod = String(locMod || Date.now());
+      await NB.subir({ id: f && f.id, name: 'Formulario SRT 900-15 (editable).xlsx', mime: XLSX_MIME, carpeta: TPL_CARP,
+        data: new Blob([tplBytes()], { type: XLSX_MIME }), props: { bae: 'srttpl', id: 'tpl', mod } });
+      store.setRaw('srt.tpl.mod', mod); store.setRaw('srt.tpl.subido', '1');
+    }
+  })().catch(() => {}).finally(() => { tplSinc = null; });
+  return tplSinc;
+}
+window.addEventListener('bae:sync', () => syncTpl());
+setTimeout(() => syncTpl(), 4000);
 async function sheetMap(zip){
   const wb = await zip.file('xl/workbook.xml').async('string');
   const rels = await zip.file('xl/_rels/workbook.xml.rels').async('string');
@@ -653,7 +677,18 @@ function wrapXf(st, idx, top){
   st.xml = st.xml.replace(m[0], () => `<cellXfs count="${n + 1}">${m[2]}${xf}</cellXfs>`);
   st.cache[ck] = n; return n;
 }
-const WRAP = { 'DATOS (2)': ['A15','A18','A20'], 'GRILLA': [...[...Array(11)].flatMap((_, k) => ['B','E','G'].map(c => c + (9 + k)))], 'GRILLA(1)': ['A8','H8'] };
+const WRAP = { 'DATOS (2)': ['A15','A18','A20','C28'], 'GRILLA': [...[...Array(11)].flatMap((_, k) => ['B','E','G'].map(c => c + (9 + k)))], 'GRILLA(1)': ['A8','H8','I12'] };
+// filas que se agrandan para que la aclaración de la firma entre completa (en puntos)
+const ALTO = { 'DATOS (2)': { 28: 44 }, 'GRILLA(1)': { 12: 44 } };
+// imprimir la hoja en una sola página (la aclaración de la firma no se pasa a otra hoja)
+function unaPagina(xml){
+  if(/<pageSetUpPr\b/.test(xml)) xml = xml.replace(/<pageSetUpPr\b([^>]*?)\/>/, (a, at) => '<pageSetUpPr' + at.replace(/\sfitToPage="[^"]*"/, '') + ' fitToPage="1"/>');
+  else if(/<sheetPr\b[^>]*\/>/.test(xml)) xml = xml.replace(/<sheetPr\b([^>]*?)\/>/, '<sheetPr$1><pageSetUpPr fitToPage="1"/></sheetPr>');
+  else if(/<sheetPr\b/.test(xml)) xml = xml.replace('</sheetPr>', '<pageSetUpPr fitToPage="1"/></sheetPr>');
+  else xml = xml.replace(/(<worksheet\b[^>]*>)/, '$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>');
+  return xml.replace(/<pageSetup\b([^>]*?)\/>/, (a, at) => '<pageSetup' + at.replace(/\s(fitToWidth|fitToHeight)="[^"]*"/g, '') + ' fitToWidth="1" fitToHeight="1"/>');
+}
+function setRowHt(xml, r, ht){ return xml.replace(new RegExp('<row r="' + r + '"([^>]*?)(/?)>'), (a, at, sl) => '<row r="' + r + '"' + at.replace(/\s(ht|customHeight)="[^"]*"/g, '') + ' ht="' + ht + '" customHeight="1"' + sl + '>'); }
 const L_ = (label, v) => v ? label + ' ' + v : label;
 function srtCells(){
   const e = srt.est, i = srt.inst, md = srt.med;
@@ -774,6 +809,8 @@ async function buildXlsx(){
     let xml = await zip.file(path).async('string');
     const wr = WRAP[name] || [];
     for(const [ref, v] of Object.entries(vals)) xml = setCell(xml, ref, v, st.xml && wr.includes(ref) && v ? wrapXf(st, cellStyle(xml, ref), name !== 'GRILLA') : undefined);
+    for(const [r, ht] of Object.entries(ALTO[name] || {})) xml = setRowHt(xml, r, ht);
+    if(ALTO[name]) xml = unaPagina(xml);
     zip.file(path, xml);
   }
   if(st.xml) zip.file('xl/styles.xml', st.xml);

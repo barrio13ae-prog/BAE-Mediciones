@@ -200,10 +200,10 @@ css.textContent = `
   .pz-etapa.off{opacity:.45}
   .pz-cobros{display:grid;gap:8px}
   .pz-cobro{display:grid;grid-template-columns:140px 1fr 1fr auto 34px;gap:8px;align-items:center}
-  .pz-cobro .rec{padding:8px 10px;font-size:13.5px}
+  .pz-cobro .rec{padding:8px 10px;font-size:13.5px}.pz-cobro .recs{display:flex;gap:6px}.pz-cobro .rec.wa{border-color:#25d366;color:#128c4b}
   .pz-cobro input{margin:0}
   .pz-cobro .del{padding:8px 0}
-  @media (max-width:560px){.pz-cobro{grid-template-columns:1fr 1fr auto}.pz-cobro input[data-cf="nota"]{grid-column:1 / 3;grid-row:2}.pz-cobro .rec{grid-column:3;grid-row:2}.pz-cobro .del{grid-column:3;grid-row:1}}
+  @media (max-width:560px){.pz-cobro{grid-template-columns:1fr 1fr auto}.pz-cobro input[data-cf="nota"]{grid-column:1 / 3;grid-row:2}.pz-cobro .recs{grid-column:3;grid-row:2}.pz-cobro .del{grid-column:3;grid-row:1}}
   .pz-saldo{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
   .pz-saldo div{display:grid;gap:2px;padding:10px 12px;border-radius:10px;background:var(--neutral-bg)}
   .pz-saldo span{font-size:12px;color:var(--muted)}
@@ -301,6 +301,7 @@ function render(){
     <p class="pz-hint">${refNota()}</p>
     <details style="margin-top:10px"><summary>Mis precios (${precios.length})</summary>
       <p class="pz-hint">Al guardar un presupuesto, sus ítems se agregan o actualizan acá con el último precio. Tocá ✕ para quitar uno.</p>
+      ${precios.length ? `<div class="row" style="align-items:flex-end;margin:6px 0 10px"><label style="flex:1;min-width:150px;margin:0">Actualizar todos (%)<input id="pzAumPct" inputmode="decimal" placeholder="ej. 8 para subir 8%"></label><button id="pzAum">Aplicar a Mis precios</button></div><div class="msg" id="pzAumMsg"></div>` : ''}
       <div class="pz-list">${precios.map((x, i) => `<div class="pz-row pz-precio"><div class="info"><b style="font-weight:500;white-space:normal">${esc(x.desc)}</b><span>$ ${money(num(x.precio))}</span></div><div class="acts"><button data-pdel="${i}">✕</button></div></div>`).join('')}</div>
     </details>
     ${simple() ? `<label style="margin-top:12px">Texto de la fila de total<input data-p="totalTxt" value="${esc(P.totalTxt || 'Total mano de obra')}"></label>` : ''}
@@ -364,7 +365,7 @@ function render(){
     <p class="pz-hint" style="margin-top:0">Marcá cada etapa por la que pasó el presupuesto; podés corregir la fecha. Se guarda solo${lista.some(x => x.id === P.id) ? '' : ' (al marcar la primera etapa queda en "Mis presupuestos")'}.</p>
     ${etapasHTML()}
     <h3 class="sub" style="margin:14px 0 6px">Cobros</h3>
-    <div class="pz-cobros">${(P.cobros || []).map((c, i) => `<div class="pz-cobro"><input type="date" data-cob="${i}" data-cf="fecha" value="${esc(c.fecha)}"><input data-cob="${i}" data-cf="monto" value="${esc(c.monto)}" placeholder="Monto" inputmode="numeric"><input data-cob="${i}" data-cf="nota" value="${esc(c.nota)}" placeholder="ej. Anticipo"><button class="rec" data-recibo="${i}" title="Descargar el recibo de este pago en PDF">Recibo</button><button class="del" data-cobdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}</div>
+    <div class="pz-cobros">${(P.cobros || []).map((c, i) => `<div class="pz-cobro"><input type="date" data-cob="${i}" data-cf="fecha" value="${esc(c.fecha)}"><input data-cob="${i}" data-cf="monto" value="${esc(c.monto)}" placeholder="Monto" inputmode="numeric"><input data-cob="${i}" data-cf="nota" value="${esc(c.nota)}" placeholder="ej. Anticipo"><span class="recs"><button class="rec" data-recibo="${i}" title="Descargar el recibo de este pago en PDF">Recibo</button><button class="rec wa" data-recibowa="${i}" title="Enviar el recibo por WhatsApp">WhatsApp</button></span><button class="del" data-cobdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}</div>
     <div class="row" style="margin-top:8px"><button id="pzCobAdd">+ Registrar cobro</button></div>
     <div class="pz-saldo"><div><span>Total</span><b>$ ${money(total())}</b></div><div><span>Cobrado</span><b id="pzCobrado">$ ${money(cobrado(P))}</b></div><div><span>Saldo</span><b id="pzSaldo">$ ${money(total() - cobrado(P))}</b></div></div>
     ${ACEPTADO.includes(P.estado) ? '<div class="row" style="margin-top:12px"><button id="pzAInforme">Crear el informe de esta obra →</button></div>' : ''}
@@ -412,6 +413,16 @@ function bind(){
     const empty = P.mo.findIndex(r => !String(r.desc).trim() && !num(r.precio));
     const row = { desc: x.desc, cant: 1, precio: String(x.precio) }; if(empty >= 0) P.mo[empty] = row; else P.mo.push(row);
     guardarActual(); render(); const t = $$('#pzMo .pz-item', v).pop(); if(t){ const c = t.querySelector('[data-f="cant"]'); t.scrollIntoView({ block: 'center' }); c.focus(); c.select(); } };
+  const aum = $('#pzAum', v); if(aum) aum.onclick = () => {
+    const pct = parseFloat(String($('#pzAumPct', v).value).replace(',', '.')), m = $('#pzAumMsg', v);
+    if(!isFinite(pct) || pct === 0 || pct <= -90 || pct > 300){ m.textContent = 'Poné un porcentaje, por ejemplo 8 (o -5 para bajar).'; m.classList.add('err'); return; }
+    if(aum.dataset.ok !== '1'){ aum.dataset.ok = '1'; aum.textContent = `¿Cambiar ${precios.length} precios ${pct}%? Tocá de nuevo`; return; }
+    // redondeo a la centena, como se suele cotizar
+    precios = precios.map(x => Object.assign({}, x, { precio: Math.round(num(x.precio) * (1 + pct / 100) / 100) * 100 }));
+    guardarPrecios(); sincronizar(false); render();
+    const d = $$('details', v).find(x => /Mis precios/.test(x.textContent)); if(d) d.open = true;
+    const m2 = $('#pzAumMsg', v); if(m2) m2.textContent = `Listo: ${precios.length} precios actualizados ${pct > 0 ? '+' : ''}${pct}%. Los presupuestos ya guardados no cambian.`;
+  };
   $$('[data-pdel]', v).forEach(b => b.onclick = () => { precios.splice(+b.dataset.pdel, 1); guardarPrecios(); render(); const d = $$('details', v).find(x => /Mis precios/.test(x.textContent)); if(d) d.open = true; });
   $$('[data-cond]', v).forEach(t => t.addEventListener('input', () => { const a = condLista(); a[+t.dataset.cond] = t.value.replace(/\n/g, ' '); condGuardar(a); }));
   $$('[data-cdel]', v).forEach(b => b.onclick = () => { const a = condLista(); a.splice(+b.dataset.cdel, 1); condGuardar(a); render(); });
@@ -436,6 +447,7 @@ function bind(){
   $$('[data-cob]', v).forEach(el => el.addEventListener('change', persistirCobros));
   $$('[data-cob]', v).forEach(el => el.addEventListener('input', () => { P.cobros[+el.dataset.cob][el.dataset.cf] = el.value; guardarActual(); const sd = $('#pzSaldo', v); if(sd) sd.textContent = '$ ' + money(total() - cobrado(P)); const cb = $('#pzCobrado', v); if(cb) cb.textContent = '$ ' + money(cobrado(P)); }));
   $$('[data-recibo]', v).forEach(b => b.onclick = () => recibo(+b.dataset.recibo));
+  $$('[data-recibowa]', v).forEach(b => b.onclick = () => recibo(+b.dataset.recibowa, true));
   $$('[data-cobdel]', v).forEach(b => b.onclick = () => { P.cobros.splice(+b.dataset.cobdel, 1); guardarActual(); persistirCobros(); render(); document.getElementById('pzSeg').scrollIntoView({ block: 'center' }); });
   const ca = $('#pzCobAdd', v); if(ca) ca.onclick = () => { P.cobros.push({ fecha: isoHoy(), monto: '', nota: P.cobros.length ? 'Pago' : 'Anticipo' }); guardarActual(); render(); const l = $$('[data-cf="monto"]', v).pop(); if(l){ l.scrollIntoView({ block: 'center' }); l.focus(); } };
   const ai = $('#pzAInforme', v); if(ai) ai.onclick = () => { if(window.__informes && window.__informes.nuevoPara){ window.__informes.nuevoPara({ empresa: P.cliente, obra: P.obra, direccion: P.direccion }); location.hash = '#informe'; } };
@@ -554,11 +566,24 @@ async function reciboPdf(o){
   doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text(SAFE(pf.nombre || ''), PW - M - 35, y + 5, { align: 'center' });
   doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text(SAFE(pf.empresa || ''), PW - M - 35, y + 9.5, { align: 'center' });
   doc.setFontSize(8); doc.setTextColor(110); doc.text(SAFE('Documento no válido como factura.'), M, 285);
-  const name = `Recibo_${o.nro}_${(o.cliente || 'cliente').replace(/[^\wáéíóúñÁÉÍÓÚÑ]+/g, '_')}.pdf`;
-  return DT.save ? DT.save(name, doc.output('blob')) : false;
+  const name = `Recibo_${o.nro}_${(o.cliente || 'cliente').replace(/[^\wáéíóúñÁÉÍÓÚÑ]+/g, '_')}.pdf`, blob = doc.output('blob');
+  // o.enviar = { tel }: en el celular se comparte el PDF (elegís WhatsApp); en la PC se descarga y se abre el chat
+  if(o.enviar){
+    const nom = String(o.cliente || '').trim(), yo = (pf.nombre || '').split(' ')[0];
+    const texto = `Hola${nom ? ' ' + nom : ''}, te envío el recibo N° ${o.nro} por $ ${money(monto)}. ¡Muchas gracias!${yo ? ' ' + yo : ''}${pf.empresa ? ' – ' + pf.empresa : ''}`;
+    const file = typeof File === 'function' ? new File([blob], name, { type: 'application/pdf' }) : null;
+    const celular = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if(celular && file && navigator.canShare && navigator.canShare({ files: [file] })){
+      try{ await navigator.share({ files: [file], text: texto }); return true; }catch(e){ if(e && e.name === 'AbortError') return false; }
+    }
+    const ok = DT.save ? await DT.save(name, blob) : false;
+    window.open(waLink(o.enviar.tel, texto), '_blank', 'noopener');
+    return ok;
+  }
+  return DT.save ? DT.save(name, blob) : false;
 }
 /* recibo de un cobro del presupuesto abierto */
-async function recibo(i){
+async function recibo(i, enviar){
   const c = (P.cobros || [])[i];
   if(!c || !(num(c.monto) > 0)){ msg('Cargá el monto del cobro antes de hacer el recibo.', true); return; }
   if(!window.jspdf){ msg('No se cargó el generador de PDF. Abrí la app con internet una vez.', true); return; }
@@ -570,8 +595,8 @@ async function recibo(i){
   const ok = await reciboPdf({ nro, fecha: c.fecha, cliente: P.cliente, monto,
     concepto: `${concepto} del presupuesto N° ${P.numero}${P.obra ? ' - ' + P.obra : ''}${P.direccion ? ', en ' + P.direccion : ''}`,
     filas: [['Total del presupuesto', '$ ' + money(total())], ['Este pago', '$ ' + money(monto)], ['Total pagado a la fecha', '$ ' + money(hasta)], ['Saldo pendiente', '$ ' + money(Math.max(0, total() - hasta))]],
-    resaltar: [1, 3] });
-  msg(ok ? 'Recibo N° ' + nro + ' listo.' + (DT.firmaTecnico && DT.firmaTecnico() ? '' : ' Salió sin firma: cargala en Inicio → Mis datos → Mi firma.') : 'No se pudo descargar el recibo.', !ok);
+    resaltar: [1, 3], enviar: enviar ? { tel: P.telCliente } : null });
+  msg(ok ? 'Recibo N° ' + nro + (enviar ? ' listo: adjuntalo en el chat de WhatsApp si no se adjuntó solo.' : ' listo.') + (DT.firmaTecnico && DT.firmaTecnico() ? '' : ' Salió sin firma: cargala en Inicio → Mis datos → Mi firma.') : 'No se pudo descargar el recibo.', !ok);
 }
 
 /* ---------- PDF ---------- */

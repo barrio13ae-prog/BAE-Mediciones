@@ -113,6 +113,7 @@ css.textContent = `
   .rs-kpi b{font-size:20px}
   .rs-kpi small{font-size:12px;color:var(--muted)}
   .rs-kpi.acc{background:var(--accent);color:var(--accent-ink)}
+  .rs-kpi.gan b{color:#0b7a4b}.rs-kpi.per b{color:#b42318}
   .rs-kpi.acc span,.rs-kpi.acc small{color:inherit;opacity:.85}
   .rs-bars{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:end;height:150px;margin-top:6px}
   .rs-bar{display:grid;gap:4px;justify-items:center;align-content:end;height:100%}
@@ -289,6 +290,72 @@ function renderSeguimiento(){
     Object.keys(pospuestos).forEach(k => { if(pospuestos[k] <= hoyISO()) delete pospuestos[k]; }); store.set('bae.seg.pospuestos', pospuestos); renderSeguimiento(); });
 }
 
+/* ================= AGENDA DE TRABAJOS EN INICIO =================
+   Visitas y obras con fecha y hora. Se ve lo de hoy, mañana y los próximos días; se sincroniza con Drive. */
+let agenda = store.get('bae.ag.lista', []), agBorr = store.get('bae.ag.borrados', []), agEdit = null, agTodo = false;
+const guardarAg = () => store.set('bae.ag.lista', agenda);
+const agCard = document.createElement('section'); agCard.className = 'card'; agCard.id = 'agCard'; agCard.style.marginBottom = '14px';
+venc.parentNode.insertBefore(agCard, venc);
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+function diaTxt(iso){ const d = diasA(iso); if(d === 0) return 'Hoy'; if(d === 1) return 'Mañana'; if(d === -1) return 'Ayer';
+  const f = new Date(iso + 'T12:00:00'); return DIAS[f.getDay()].replace(/^./, c => c.toUpperCase()) + ' ' + fmtD(iso).slice(0, 5); }
+const mapsLink = dir => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(dir + (/,/.test(dir) ? '' : ', ' + (pf().localidad || '')));
+function textoAg(x){ const yo = (pf().nombre || '').split(' ')[0], d = diasA(x.fecha);
+  return `Hola${x.cliente ? ' ' + x.cliente : ''}, ¿cómo estás? Te escribe ${yo} de ${pf().empresa || 'BAE Servicios de Instalaciones'}. Te confirmo la visita ${d === 0 ? 'de hoy' : d === 1 ? 'de mañana' : 'del ' + DIAS[new Date(x.fecha + 'T12:00:00').getDay()] + ' ' + fmtD(x.fecha)}${x.hora ? ' a las ' + x.hora : ''}${x.direccion ? ' en ' + x.direccion : ''}. ¡Nos vemos!`; }
+function renderAgenda(){
+  const hoy = hoyISO(), hasta = sumarDias(hoy, 7);
+  const prox = agenda.filter(x => !x.hecho && x.fecha >= hoy).sort((a, b) => (a.fecha + (a.hora || '99')).localeCompare(b.fecha + (b.hora || '99')));
+  const atras = agenda.filter(x => !x.hecho && x.fecha < hoy).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const ver = agTodo ? prox : prox.filter(x => x.fecha <= hasta), resto = prox.length - ver.length;
+  const e = agEdit;
+  const item = x => { const tel = x.tel || (lista.find(c => clave(c.nombre) === clave(x.cliente)) || {}).telefono || '';
+    return `<div class="venc ag-it"><div class="info"><a href="#inicio" data-agabrir="${x.id}" style="color:inherit;text-decoration:none"><b>${esc(diaTxt(x.fecha))}${x.hora ? ' · ' + esc(x.hora) : ''}</b> · ${esc(x.cliente || x.detalle || 'Trabajo')}</a>
+      <span>${[x.detalle && x.cliente ? esc(x.detalle) : '', x.direccion ? `<a href="${mapsLink(x.direccion)}" target="_blank" rel="noopener">📍 ${esc(x.direccion)}</a>` : ''].filter(Boolean).join(' · ')}</span></div>
+      <div style="display:flex;gap:6px;align-items:center;flex:none">${tel ? `<a class="wa" href="${waLink(tel, textoAg(x))}" target="_blank" rel="noopener" title="Confirmar la visita por WhatsApp">Confirmar</a>` : ''}<button type="button" class="cl-chip" data-aghecho="${x.id}" title="Marcar como hecho" style="border:none;cursor:pointer">✓ Hecho</button></div></div>`; };
+  const form = e ? `<div class="rs-ing-form" style="margin-top:8px">
+      <div class="grid"><label>Fecha<input type="date" id="agFecha" value="${esc(e.fecha)}"></label><label>Hora (opcional)<input type="time" id="agHora" value="${esc(e.hora)}"></label></div>
+      <div class="grid"><label>Cliente<input id="agCli" value="${esc(e.cliente)}" list="dlClientes" placeholder="Nombre"></label><label>Qué hay que hacer<input id="agDet" value="${esc(e.detalle)}" placeholder="ej. Medición de PAT / Instalación de anafe"></label></div>
+      <div class="grid"><label>Dirección (opcional)<input id="agDir" value="${esc(e.direccion)}" placeholder="Calle y número"></label><label>Teléfono (opcional)<input id="agTel" value="${esc(e.tel)}" inputmode="tel" placeholder="Si no está en Clientes"></label></div>
+      <div class="row"><button class="primary" id="agGuardar">Guardar</button><button id="agCancelar">Cancelar</button>${agenda.some(x => x.id === e.id) ? '<button id="agBorrar">Borrar</button>' : ''}</div><div class="msg" id="agMsg"></div></div>` : '';
+  agCard.innerHTML = `<div class="cl-top"><h2>Agenda</h2>${e ? '' : '<button class="primary" id="agNuevo">+ Agendar</button>'}</div>
+    ${form}
+    ${atras.length ? `<p class="cl-hint" style="margin:4px 0 0">Pendientes de días anteriores:</p>${atras.map(item).join('')}` : ''}
+    ${ver.length ? ver.map(item).join('') : (e || atras.length ? '' : '<p class="cl-hint" style="margin:0">No tenés trabajos agendados para esta semana. Tocá <b>+ Agendar</b> para anotar una visita u obra.</p>')}
+    ${resto ? `<p class="cl-hint" style="margin:8px 0 0"><a href="#inicio" id="agTodo">Ver ${resto} más adelante</a></p>` : agTodo && prox.length ? '<p class="cl-hint" style="margin:8px 0 0"><a href="#inicio" id="agTodo">Ver solo esta semana</a></p>' : ''}`;
+  const n = $('#agNuevo', agCard); if(n) n.onclick = () => { agEdit = { id: 'a' + Date.now(), fecha: hoyISO(), hora: '', cliente: '', detalle: '', direccion: '', tel: '' }; renderAgenda(); const f = $('#agCli', agCard); if(f) f.focus(); };
+  const t = $('#agTodo', agCard); if(t) t.onclick = ev => { ev.preventDefault(); agTodo = !agTodo; renderAgenda(); };
+  $$('[data-agabrir]', agCard).forEach(a => a.onclick = ev => { ev.preventDefault(); const x = agenda.find(y => y.id === a.dataset.agabrir); if(x){ agEdit = JSON.parse(JSON.stringify(x)); renderAgenda(); agCard.scrollIntoView({ block: 'start' }); } });
+  $$('[data-aghecho]', agCard).forEach(b => b.onclick = () => { const x = agenda.find(y => y.id === b.dataset.aghecho); if(!x) return;
+    Object.assign(x, { hecho: true, _mod: Date.now(), _dirty: true }); guardarAg(); renderAgenda(); sincronizarAg(); });
+  if(!e) return;
+  const leer = () => { Object.assign(agEdit, { fecha: $('#agFecha', agCard).value, hora: $('#agHora', agCard).value, cliente: $('#agCli', agCard).value.trim(), detalle: $('#agDet', agCard).value.trim(), direccion: $('#agDir', agCard).value.trim(), tel: $('#agTel', agCard).value.trim() }); };
+  // al elegir un cliente de la agenda, se completan dirección y teléfono
+  $('#agCli', agCard).onchange = () => { const c = lista.find(x => clave(x.nombre) === clave($('#agCli', agCard).value)); if(c){ if(!$('#agDir', agCard).value) $('#agDir', agCard).value = [c.direccion, c.localidad].filter(Boolean).join(', '); if(!$('#agTel', agCard).value && c.telefono) $('#agTel', agCard).value = c.telefono; } };
+  $('#agGuardar', agCard).onclick = () => { leer(); const m = $('#agMsg', agCard);
+    if(!agEdit.fecha){ m.textContent = 'Poné la fecha.'; m.classList.add('err'); return; }
+    if(!agEdit.cliente && !agEdit.detalle){ m.textContent = 'Poné el cliente o qué hay que hacer.'; m.classList.add('err'); return; }
+    const rec = Object.assign({}, agEdit, { hecho: false, _mod: Date.now(), _dirty: true }), i = agenda.findIndex(x => x.id === rec.id);
+    if(i >= 0){ rec._driveId = agenda[i]._driveId; agenda[i] = rec; } else agenda.push(rec);
+    if(rec.cliente) window.dispatchEvent(new CustomEvent('bae:cliente', { detail: { nombre: rec.cliente, telefono: rec.tel, direccion: rec.direccion } }));
+    guardarAg(); agEdit = null; renderAgenda(); sincronizarAg(); };
+  $('#agCancelar', agCard).onclick = () => { agEdit = null; renderAgenda(); };
+  const bb = $('#agBorrar', agCard); if(bb) bb.onclick = () => {
+    if(bb.dataset.ok !== '1'){ bb.dataset.ok = '1'; bb.textContent = '¿Seguro? Tocá de nuevo'; return; }
+    const x = agenda.find(y => y.id === agEdit.id); if(x && x._driveId){ agBorr.push(x._driveId); store.set('bae.ag.borrados', agBorr); }
+    agenda = agenda.filter(y => y.id !== agEdit.id); guardarAg(); agEdit = null; renderAgenda(); sincronizarAg(); };
+}
+let agCorr = null, agOtra = false;
+function sincronizarAg(){
+  if(!N || !N.email || !N.conectado) return;
+  if(agCorr){ agOtra = true; return agCorr; }
+  agCorr = N.sincronizarColeccion({ tipo: 'ag', carpeta: CARPETA, lista: () => agenda, setLista: l => { agenda = l; guardarAg(); },
+    borrados: () => agBorr, setBorrados: b => { agBorr = b; store.set('bae.ag.borrados', agBorr); },
+    nombre: x => ('Agenda_' + x.fecha + '_' + (x.cliente || x.detalle || 'trabajo')).replace(/[\\/:*?"<>|]+/g, '_') })
+    .then(c => { const a = document.activeElement; if(c && !(a && agCard.contains(a) && /INPUT/.test(a.tagName))) renderAgenda(); }, () => {})
+    .finally(() => { agCorr = null; if(agOtra){ agOtra = false; sincronizarAg(); } });
+  return agCorr;
+}
+
 /* ================= RESUMEN DEL MES ================= */
 const vRes = document.createElement('div'); vRes.className = 'view'; vRes.id = 'view-resumen'; vRes.hidden = true; APP.main.appendChild(vRes);
 APP.VIEWS.resumen = { el: vRes, title: 'Resumen', sub: 'Cómo viene el mes: presupuestos, ingresos y trabajos.' };
@@ -307,6 +374,55 @@ let ingresos = store.get('bae.ing.lista', []), ingBorr = store.get('bae.ing.borr
 const guardarIng = () => store.set('bae.ing.lista', ingresos);
 let ingEdit = null, ingSinc = '';
 let ingCorr = null, ingOtra = false;
+
+/* ---------- gastos (materiales, combustible, herramientas…) ---------- */
+const CAT_GST = [['materiales', 'Materiales'], ['combustible', 'Combustible / viáticos'], ['herramientas', 'Herramientas y equipos'], ['otro', 'Otros']];
+const catTxt = k => (CAT_GST.find(c => c[0] === k) || CAT_GST[3])[1];
+let gastos = store.get('bae.gst.lista', []), gstBorr = store.get('bae.gst.borrados', []), gstEdit = null;
+const guardarGst = () => store.set('bae.gst.lista', gastos);
+function gastosHTML(d){
+  const lst = gastos.filter(x => enMes(x.fecha, mesSel)).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  const e = gstEdit, radios = (name, ops, val) => `<div class="rs-ops">${ops.map(([k, t]) => `<label class="${val === k ? 'on' : ''}"><input type="radio" name="${name}" value="${k}" ${val === k ? 'checked' : ''}>${t}</label>`).join('')}</div>`;
+  const porCat = {}; lst.forEach(x => { porCat[x.categoria] = (porCat[x.categoria] || 0) + num(x.monto); });
+  const form = e ? `<div class="rs-ing-form">
+      <div class="grid"><label>Fecha<input type="date" id="gsFecha" value="${esc(e.fecha)}"></label>
+        <label>Monto ($)<input id="gsMonto" value="${esc(e.monto)}" inputmode="numeric" placeholder="ej. 25000"></label></div>
+      <label>Categoría</label>${radios('gsCat', CAT_GST, e.categoria)}
+      <div class="grid"><label>Detalle (opcional)<input id="gsDet" value="${esc(e.detalle)}" placeholder="ej. Cable 2,5 mm y térmicas"></label>
+        <label>Obra o cliente (opcional)<input id="gsObra" value="${esc(e.obra)}" list="dlClientes" placeholder="Para qué trabajo fue"></label></div>
+      <div class="row"><button class="primary" id="gsGuardar">Guardar gasto</button><button id="gsCancelar">Cancelar</button>${gastos.some(x => x.id === e.id) ? '<button id="gsBorrar">Borrar</button>' : ''}</div>
+      <div class="msg" id="gsMsg"></div></div>` : '';
+  return `<section class="card" id="rsGst"><div class="cl-top"><h2>Gastos</h2>${e ? '' : '<button class="primary" id="gsNuevo">+ Registrar gasto</button>'}</div>
+    <p class="cl-hint" style="margin-top:0">Materiales, combustible, herramientas y otros gastos del trabajo. Se restan de los ingresos para calcular la ganancia.${Object.keys(porCat).length ? ' Este mes: ' + Object.entries(porCat).map(([k, v]) => esc(catTxt(k)) + ' $ ' + money(v)).join(' · ') + '.' : ''}</p>
+    ${form}
+    ${lst.length ? `<div class="rs-pend">${lst.map(x => `<a href="#resumen" data-gs="${x.id}"><span><b>${esc(x.detalle || catTxt(x.categoria))}</b> · ${fmtD(x.fecha)}<br><small>${esc(catTxt(x.categoria))}${x.obra ? ' · ' + esc(x.obra) : ''}</small></span><b>$ ${money(num(x.monto))}</b></a>`).join('')}</div>`
+      : e ? '' : `<p class="cl-hint">No hay gastos cargados en ${mesTxt(mesSel)}.</p>`}</section>`;
+}
+function bindGastos(){
+  const nuevo = $('#gsNuevo', vRes);
+  if(nuevo) nuevo.onclick = () => { gstEdit = { id: 'g' + Date.now(), fecha: mesSel === hoyISO().slice(0, 7) ? hoyISO() : mesSel + '-01', monto: '', categoria: 'materiales', detalle: '', obra: '' };
+    renderResumen(); const m = $('#gsMonto', vRes); if(m){ m.scrollIntoView({ block: 'center' }); m.focus(); } };
+  $$('[data-gs]', vRes).forEach(a => a.onclick = ev => { ev.preventDefault(); const x = gastos.find(y => y.id === a.dataset.gs); if(!x) return;
+    gstEdit = JSON.parse(JSON.stringify(x)); renderResumen(); const f = $('#rsGst .rs-ing-form', vRes); if(f) f.scrollIntoView({ block: 'center' }); });
+  if(!gstEdit) return;
+  const leer = () => { gstEdit.fecha = $('#gsFecha', vRes).value; gstEdit.monto = $('#gsMonto', vRes).value; gstEdit.detalle = $('#gsDet', vRes).value.trim(); gstEdit.obra = $('#gsObra', vRes).value.trim(); };
+  $$('input[name="gsCat"]', vRes).forEach(r => r.onchange = () => { leer(); gstEdit.categoria = r.value; renderResumen(); });
+  const err = t => { const m = $('#gsMsg', vRes); m.textContent = t; m.classList.add('err'); };
+  $('#gsGuardar', vRes).onclick = () => {
+    leer();
+    if(!gstEdit.fecha) return err('Poné la fecha del gasto.');
+    if(!(num(gstEdit.monto) > 0)) return err('Poné el monto del gasto.');
+    const rec = Object.assign({}, gstEdit, { _mod: Date.now(), _dirty: true }), i = gastos.findIndex(x => x.id === rec.id);
+    if(i >= 0){ rec._driveId = gastos[i]._driveId; gastos[i] = rec; } else gastos.push(rec);
+    guardarGst(); mesSel = rec.fecha.slice(0, 7); gstEdit = null; renderResumen(); sincronizarIng(false);
+  };
+  $('#gsCancelar', vRes).onclick = () => { gstEdit = null; renderResumen(); };
+  const bb = $('#gsBorrar', vRes); if(bb) bb.onclick = () => {
+    if(bb.dataset.ok !== '1'){ bb.dataset.ok = '1'; bb.textContent = '¿Seguro? Tocá de nuevo'; return; }
+    const x = gastos.find(y => y.id === gstEdit.id); if(x && x._driveId){ gstBorr.push(x._driveId); store.set('bae.gst.borrados', gstBorr); }
+    gastos = gastos.filter(y => y.id !== gstEdit.id); guardarGst(); gstEdit = null; renderResumen(); sincronizarIng(false);
+  };
+}
 const escribiendoRes = () => { const a = document.activeElement; return a && vRes.contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName); };
 async function sincronizarIng(interactivo){
   if(!N || !N.email) return;
@@ -319,6 +435,10 @@ async function sincronizarIng(interactivo){
         lista: () => ingresos, setLista: l => { ingresos = l; guardarIng(); },
         borrados: () => ingBorr, setBorrados: b => { ingBorr = b; store.set('bae.ing.borrados', ingBorr); },
         nombre: x => ('Ingreso_' + x.fecha + '_' + (x.cliente || rubroTxt(x.rubro))).replace(/[\\/:*?"<>|]+/g, '_') });
+      cambio = await N.sincronizarColeccion({ tipo: 'gst', carpeta: 'BAE Ingresos',
+        lista: () => gastos, setLista: l => { gastos = l; guardarGst(); },
+        borrados: () => gstBorr, setBorrados: b => { gstBorr = b; store.set('bae.gst.borrados', gstBorr); },
+        nombre: x => ('Gasto_' + x.fecha + '_' + (x.detalle || catTxt(x.categoria))).replace(/[\\/:*?"<>|]+/g, '_') }) || cambio;
       ingSinc = '';
     }catch(e){ ingSinc = e.code === 'TOKEN' ? 'Drive desconectado: tocá ↻ en Clientes o Presupuestos para reconectar.' : navigator.onLine ? 'No se pudieron sincronizar los ingresos con Drive.' : 'Sin internet: los ingresos se suben a Drive cuando vuelva la conexión.'; }
     finally{
@@ -358,6 +478,7 @@ function datosMes(m){
     nAcep: pm.filter(x => ACEPT.includes(x.estado)).length, montoAcep: pm.filter(x => ACEPT.includes(x.estado)).reduce((a, x) => a + (x._total || 0), 0),
     nRech: pm.filter(x => x.estado === 'rechazado').length,
     cobrado: cobPres + sueltos,
+    gastosMes: gastos.filter(x => enMes(x.fecha, m)).reduce((a, x) => a + num(x.monto), 0),
     nInf: infs.filter(x => enMes((x.report || {}).fecha, m)).length,
     nSrt: lista.filter(c => enMes(c.srt, m)).length,
     pendientes: pres.filter(x => ACEPT.includes(x.estado) && (x._total || 0) - cob(x) > 0.5).map(x => ({ x, saldo: (x._total || 0) - cob(x) }))
@@ -372,6 +493,8 @@ function renderResumen(){
   vRes.innerHTML = `<section class="card"><div class="rs-nav"><button id="rsPrev" aria-label="Mes anterior">‹</button><b>${mesTxt(mesSel)}</b><button id="rsNext" aria-label="Mes siguiente">›</button></div>
     <div class="rs-kpis">
       <div class="rs-kpi acc"><span>Ingresos del mes</span><b>$ ${money(d.cobrado)}</b><small>${d.sueltos ? `presupuestos $ ${money(d.cobPres)} · sin presupuesto $ ${money(d.sueltos)}` : 'cobros de presupuestos'}</small></div>
+      <div class="rs-kpi"><span>Gastos del mes</span><b>$ ${money(d.gastosMes)}</b><small>materiales, combustible y otros</small></div>
+      <div class="rs-kpi ${d.cobrado - d.gastosMes >= 0 ? 'gan' : 'per'}"><span>Ganancia del mes</span><b>$ ${money(d.cobrado - d.gastosMes)}</b><small>ingresos menos gastos</small></div>
       <div class="rs-kpi"><span>Presupuestado</span><b>$ ${money(d.montoPres)}</b><small>${d.nPres} presupuesto${d.nPres === 1 ? '' : 's'}</small></div>
       <div class="rs-kpi"><span>Aceptado</span><b>$ ${money(d.montoAcep)}</b><small>${d.nAcep} de ${d.nPres} · ${tasa}%${d.nRech ? ' · ' + d.nRech + ' rechazado' + (d.nRech > 1 ? 's' : '') : ''}</small></div>
       <div class="rs-kpi"><span>Por cobrar (total)</span><b>$ ${money(pend)}</b><small>${d.pendientes.length} trabajo${d.pendientes.length === 1 ? '' : 's'} con saldo</small></div>
@@ -383,13 +506,14 @@ function renderResumen(){
       <div class="rs-ley"><span><i></i>Presupuestado</span><span><i class="c"></i>Ingresos</span></div></section>
     ${rubrosHTML(d)}
     ${ingresosHTML(d)}
+    ${gastosHTML(d)}
     ${d.pendientes.length ? `<section class="card"><h2>Saldos por cobrar</h2><div class="rs-pend">${d.pendientes.sort((a, b) => b.saldo - a.saldo).map(p => `<a href="#presu" data-rp="${p.x.id}"><span><b>${esc(p.x.cliente || 'Sin cliente')}</b> · N° ${esc(p.x.numero)}</span><b>$ ${money(p.saldo)}</b></a>`).join('')}</div></section>` : ''}
     ${herramientasHTML()}`;
   bindHerramientas();
   $('#rsPrev', vRes).onclick = () => { mesSel = mover(mesSel, -1); renderResumen(); };
   $('#rsNext', vRes).onclick = () => { mesSel = mover(mesSel, 1); renderResumen(); };
   $$('[data-rp]', vRes).forEach(a => a.onclick = e => { e.preventDefault(); const x = (window.__presu.lista || []).find(y => y.id === a.dataset.rp); if(x){ window.__presu.P = JSON.parse(JSON.stringify(x)); location.hash = '#presu'; setTimeout(() => { const s = document.getElementById('pzSeg'); if(s) s.scrollIntoView({ block: 'start' }); }, 80); } });
-  bindIngresos();
+  bindIngresos(); bindGastos();
 }
 
 /* ================= EXPORTAR A EXCEL Y COPIA DE SEGURIDAD ================= */
@@ -422,7 +546,9 @@ async function exportarMes(m){
   const hojas = [
     { nombre: 'Ingresos ' + mesTxt(m), anchos: [12, 28, 14, 30, 22, 20, 22, 14],
       filas: [['Fecha', 'Cliente', 'Presupuesto', 'Obra / detalle', 'Concepto', 'Rubro', 'Origen', 'Monto ($)'], ...cobros.map(r => r.slice(0, 8)), [], ['', '', '', '', '', '', 'Total', tot]] },
-    { nombre: 'Por rubro', anchos: [26, 14], filas: [['Rubro', 'Monto ($)'], ...Object.entries(d.porRubro).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => [rubroTxt(k), v]), [], ['Total', tot]] },
+    { nombre: 'Por rubro', anchos: [26, 14], filas: [['Rubro', 'Monto ($)'], ...Object.entries(d.porRubro).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => [rubroTxt(k), v]), [], ['Total ingresos', tot], ['Total gastos', d.gastosMes], ['Ganancia', tot - d.gastosMes]] },
+    { nombre: 'Gastos', anchos: [12, 24, 34, 28, 14],
+      filas: [['Fecha', 'Categoría', 'Detalle', 'Obra / cliente', 'Monto ($)'], ...gastos.filter(x => enMes(x.fecha, m)).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))).map(x => [fmtD(x.fecha), catTxt(x.categoria), x.detalle || '', x.obra || '', num(x.monto)]), [], ['', '', '', 'Total', d.gastosMes]] },
     { nombre: 'Presupuestos del mes', anchos: [12, 12, 28, 30, 14, 14, 14],
       filas: [['N°', 'Fecha', 'Cliente', 'Obra', 'Estado', 'Total ($)', 'Cobrado ($)'], ...pres.filter(x => enMes(x.fecha, m)).map(x => [x.numero, fmtD(x.fecha), x.cliente || '', x.obra || '', x.estado || 'borrador', x._total || 0, cobrosDe(x).reduce((a, c) => a + num(c.monto), 0)])] },
     { nombre: 'Saldos por cobrar', anchos: [12, 28, 30, 14, 14],
@@ -497,7 +623,7 @@ function ingresosHTML(d){
         <label>Trabajo realizado (opcional)<input id="igDetalle" value="${esc(e.detalle)}" placeholder="ej. Cambio de térmica quemada"></label></div>
       <div class="grid"><label>Dirección (opcional)<input id="igDir" value="${esc(e.direccion)}" placeholder="Dónde se hizo el trabajo"></label>
         <div><label>Forma de pago</label>${radios('igForma', FORMAS, e.forma)}</div></div>
-      <div class="row"><button class="primary" id="igGuardar">Guardar ingreso</button><button id="igRecibo" title="Guarda el ingreso y descarga un recibo en PDF para entregarle al cliente">${e.nroRecibo ? 'Guardar y descargar recibo' : 'Guardar y hacer recibo'}</button><button id="igCancelar">Cancelar</button>${ingresos.some(x => x.id === e.id) ? '<button id="igBorrar">Borrar</button>' : ''}</div>
+      <div class="row"><button class="primary" id="igGuardar">Guardar ingreso</button><button id="igRecibo" title="Guarda el ingreso y descarga un recibo en PDF para entregarle al cliente">${e.nroRecibo ? 'Guardar y descargar recibo' : 'Guardar y hacer recibo'}</button><button id="igReciboWa" title="Guarda el ingreso y envía el recibo por WhatsApp" style="border-color:#25d366;color:#128c4b">Recibo por WhatsApp</button><button id="igCancelar">Cancelar</button>${ingresos.some(x => x.id === e.id) ? '<button id="igBorrar">Borrar</button>' : ''}</div>
       <div class="msg" id="igMsg"></div></div>` : '';
   return `<section class="card" id="rsIng"><div class="cl-top"><h2>Ingresos sin presupuesto</h2>${e ? '' : '<button class="primary" id="igNuevo">+ Registrar ingreso</button>'}</div>
     <p class="cl-hint" style="margin-top:0">Emergencias y trabajos que cobraste sin presupuesto de por medio.${d.nEmerg ? ` Este mes: ${d.nEmerg} emergencia${d.nEmerg === 1 ? '' : 's'}.` : ''}</p>
@@ -518,7 +644,7 @@ function bindIngresos(){
   const leer = () => { ingEdit.fecha = $('#igFecha', vRes).value; ingEdit.monto = $('#igMonto', vRes).value; ingEdit.cliente = $('#igCliente', vRes).value.trim(); ingEdit.detalle = $('#igDetalle', vRes).value.trim(); ingEdit.direccion = $('#igDir', vRes).value.trim(); };
   $$('input[name="igRubro"], input[name="igTipo"], input[name="igForma"]', vRes).forEach(r => r.onchange = () => { leer(); ingEdit[{ igRubro: 'rubro', igTipo: 'tipo', igForma: 'forma' }[r.name]] = r.value; renderResumen(); });
   const err = t => { const m = $('#igMsg', vRes); m.textContent = t; m.classList.add('err'); };
-  const guardarIngreso = async conRecibo => {
+  const guardarIngreso = async (conRecibo, enviar) => {
     leer();
     if(!ingEdit.fecha) return err('Poné la fecha del cobro.');
     if(!(num(ingEdit.monto) > 0)) return err('Poné el monto cobrado.');
@@ -539,12 +665,14 @@ function bindIngresos(){
       const detalle = rec.detalle || '', rub = rubroTxt(rec.rubro).toLowerCase();
       let ok = false;
       try{ ok = await window.__presu.reciboPdf({ nro: rec.nroRecibo, fecha: rec.fecha, cliente: rec.cliente, monto: num(rec.monto), forma: ({ efectivo: 'en efectivo', transferencia: 'por transferencia' })[rec.forma] || '',
-        concepto: rec.tipo === 'emergencia' ? `servicio de emergencia (${rub})` : `trabajos de ${rub}`, detalle, direccion: rec.direccion }); }catch(e){}
+        concepto: rec.tipo === 'emergencia' ? `servicio de emergencia (${rub})` : `trabajos de ${rub}`, detalle, direccion: rec.direccion,
+        enviar: enviar ? { tel: (lista.find(c => clave(c.nombre) === clave(rec.cliente)) || {}).telefono || '' } : null }); }catch(e){}
       const m = $('#igAviso', vRes); if(m){ m.textContent = ok ? `Recibo N° ${rec.nroRecibo} descargado.` + (window.__dt && window.__dt.firmaTecnico && window.__dt.firmaTecnico() ? '' : ' Salió sin firma: cargala en Inicio → Mis datos → Mi firma.') : 'No se pudo generar el recibo. Abrí la app con internet una vez.'; m.classList.toggle('err', !ok); m.scrollIntoView({ block: 'center' }); }
     }
   };
   $('#igGuardar', vRes).onclick = () => guardarIngreso(false);
   $('#igRecibo', vRes).onclick = () => guardarIngreso(true);
+  $('#igReciboWa', vRes).onclick = () => guardarIngreso(true, true);
   $('#igCancelar', vRes).onclick = () => { ingEdit = null; renderResumen(); };
   const bb = $('#igBorrar', vRes); if(bb) bb.onclick = () => {
     if(bb.dataset.ok !== '1'){ bb.dataset.ok = '1'; bb.textContent = '¿Seguro? Tocá de nuevo'; return; }
@@ -565,11 +693,11 @@ function alEntrar(){
   const h = location.hash;
   if(h === '#clientes'){ renderLista(); sincronizar(false); }
   if(h === '#resumen'){ renderResumen(); sincronizarIng(false); if(window.__presu && window.__presu.sincronizar) window.__presu.sincronizar(false); }
-  if(h === '#inicio' || h === '' || h === '#'){ renderVencimientos(); renderSeguimiento(); }
+  if(h === '#inicio' || h === '' || h === '#'){ renderVencimientos(); renderSeguimiento(); if(!agEdit) renderAgenda(); }
 }
 window.addEventListener('hashchange', alEntrar);
 // sincronización automática (nube.js): clientes e ingresos sin presupuesto
-window.addEventListener('bae:sync', () => { sincronizar(false); sincronizarIng(false); });
+window.addEventListener('bae:sync', () => { sincronizar(false); sincronizarIng(false); sincronizarAg(); });
 actualizarDatalist(); renderVencimientos();
 if(N && N.email) setTimeout(() => { sincronizar(false); sincronizarIng(false); }, 1200);
 window.__clientes = { get lista(){ return lista; }, upsert, estadoSrt, waLink, sincronizar };
