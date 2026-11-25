@@ -173,17 +173,17 @@ async function sincronizar(interactivo){
     return corriendo;
   }
   corriendo = (async () => {
-    let ok = false;
+    let ok = false, cambio = false;
     try{
       estado('Sincronizando…');
-      await N.sincronizarColeccion({ tipo: 'inf', carpeta: CARPETA,
+      cambio = await N.sincronizarColeccion({ tipo: 'inf', carpeta: CARPETA,
         lista: () => lista, setLista: l => { lista = l; store.set('bae.inf.lista', lista); },
         borrados: () => borrados, setBorrados: b => { borrados = b; store.set('bae.inf.borrados', borrados); },
         nombre: x => ('Informe_' + ((x.report || {}).fecha || '') + '_' + titulo(x).replace(/ · /g, ' - ')).replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim() });
       await sincronizarFotos();
-      await N.sincronizarColeccion({ tipo: 'aj', carpeta: CARPETA, lista: () => ajustes, setLista: l => { ajustes = l; store.set('bae.aj.lista', ajustes); },
-        borrados: () => [], setBorrados: () => {}, nombre: x => 'bae-ajuste-' + x.id });
-      renderMiFirma(); renderCierre();
+      cambio = await N.sincronizarColeccion({ tipo: 'aj', carpeta: CARPETA, lista: () => ajustes, setLista: l => { ajustes = l; store.set('bae.aj.lista', ajustes); },
+        borrados: () => [], setBorrados: () => {}, nombre: x => 'bae-ajuste-' + x.id }) || cambio;
+      if(cambio){ renderMiFirma(); renderCierre(); }
       store.set('bae.inf.ult', Date.now()); sinc = { txt: '', err: false }; ok = true;
     }catch(e){
       if(e.code === 'TOKEN') estado('La conexión con Drive venció: tocá "Sincronizar".', true);
@@ -191,7 +191,8 @@ async function sincronizar(interactivo){
       else estado('No se pudo sincronizar: ' + e.message + '.', true);
     }finally{
       corriendo = null;
-      if(ok){ const a = document.activeElement; if(!(a && card.contains(a) && a.id === 'ifBuscar')) render(); else estado(''); }
+      // la sincronización automática corre cada minuto: la lista se redibuja solo si llegó algo nuevo
+      if(ok){ const a = document.activeElement; if(cambio && !(a && card.contains(a) && a.id === 'ifBuscar')) render(); else { const t = document.createElement('div'); t.innerHTML = nubeHTML(); const n = t.querySelector('#ifNubeTxt'); estado(''); const e = $('#ifNubeTxt', card); if(e && n) e.textContent = n.textContent; } }
       if(ok && S.fotos.length && $('#infFotos .img:not([style*="background-image"])')) renderFotos();
       if(otraVez){ otraVez = false; sincronizar(false); }
     }
@@ -584,6 +585,7 @@ fechaHoy();
 window.addEventListener('hashchange', () => { if(location.hash === '#informe'){ fechaHoy(); render(); sincronizar(false); sincronizarIns(); } });
 window.addEventListener('online', () => sincronizar(false));
 if(N) N.onCambio(() => { if(location.hash === '#informe') render(); });
+window.addEventListener('bae:sync', () => sincronizar(false));   // sincronización automática (nube.js)
 
 render(); renderFotos(); renderCierre(); renderMiFirma();
 if(location.hash === '#informe') setTimeout(() => sincronizar(false), 300);

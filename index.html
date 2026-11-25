@@ -1002,9 +1002,13 @@ function telCliente(){
   const c = (C.lista || []).find(x => String(x.nombre || '').trim().toLowerCase() === n); return c && (c.tel || c.telefono) || '';
 }
 async function compartirPdf(blob, nombre){
-  const r = state.report, texto = `Hola${r.empresa ? ' ' + r.empresa : ''}, te envío el informe de mediciones${r.obra ? ' de ' + r.obra : ''}. Cualquier consulta, a disposición. Alexis - BAE Servicios de Instalaciones`;
+  const pf = typeof window.__perfil === 'function' ? window.__perfil() : {};
+  const firma = [(pf.nombre || '').split(' ')[0], pf.empresa].filter(Boolean).join(' - ');
+  const r = state.report, texto = `Hola${r.empresa ? ' ' + r.empresa : ''}, te envío el informe de mediciones${r.obra ? ' de ' + r.obra : ''}. Cualquier consulta, a disposición.${firma ? ' ' + firma : ''}`;
   const file = new File([blob], nombre, { type: 'application/pdf' });
-  if(navigator.canShare && navigator.canShare({ files: [file] })){
+  // en la PC no se usa el panel "Compartir" de Windows: se descarga el PDF y se abre WhatsApp
+  const celular = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if(celular && navigator.canShare && navigator.canShare({ files: [file] })){
     try{ await navigator.share({ files: [file], title: nombre, text: texto }); setMsg('#dlMsg', 'Informe compartido.'); return; }
     catch(e){ if(e && e.name === 'AbortError'){ setMsg('#dlMsg', ''); return; } }
   }
@@ -1164,14 +1168,14 @@ window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles, 
 })();
 </script>
 <script src="logo.js?v=3"></script>
-<script src="nube.js?v=8"></script>
+<script src="nube.js?v=9"></script>
 <script src="srt.js?v=21"></script>
 <script src="precios-ref.js?v=1"></script>
-<script src="presu.js?v=24"></script>
-<script src="informes.js?v=11"></script>
-<script src="clientes.js?v=8"></script>
+<script src="presu.js?v=25"></script>
+<script src="informes.js?v=12"></script>
+<script src="clientes.js?v=9"></script>
 <script src="calc.js?v=1"></script>
-<script src="gas.js?v=5"></script>
+<script src="gas.js?v=6"></script>
 <script>
 // instalable como app (GitHub Pages); dentro de Claude simplemente se omite
 if('serviceWorker' in navigator && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)){

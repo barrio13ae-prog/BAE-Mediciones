@@ -100,9 +100,16 @@ function salir(){
 }
 
 /* ---------- Google Drive ---------- */
+let enCurso = 0, ultOk = ls.get('bae.drive.ultOk', 0), ultErr = '';
 async function api(url, opt = {}, reintento){
   if(!tokenOk()) throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' });
-  const r = await fetch(url, Object.assign({}, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok.t }, opt.headers || {}) }));
+  enCurso++; indicador();
+  let r;
+  try{ r = await fetch(url, Object.assign({}, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok.t }, opt.headers || {}) })); }
+  catch(e){ ultErr = navigator.onLine === false ? '' : 'sin conexión con Drive'; throw e; }
+  finally{ enCurso--; setTimeout(indicador, 400); }
+  if(r.ok){ ultOk = Date.now(); ultErr = ''; ls.set('bae.drive.ultOk', ultOk); }
+  else if(r.status !== 404) ultErr = 'Drive respondió ' + r.status;
   if(r.status === 401){ tok = null; ls.del('bae.tok'); avisar(); throw Object.assign(new Error('hay que reconectar Google Drive'), { code: 'TOKEN' }); }
   if(!r.ok){
     if(!reintento && (r.status === 429 || r.status >= 500)){ await new Promise(x => setTimeout(x, 1500)); return api(url, opt, true); }
@@ -209,7 +216,7 @@ function revisarAviso(){
   if(b) return;
   if(!document.getElementById('baeDriveCss')){
     const c = document.createElement('style'); c.id = 'baeDriveCss';
-    c.textContent = `#baeDrive{position:fixed;left:50%;top:max(10px, env(safe-area-inset-top));transform:translateX(-50%);z-index:9000;width:calc(100% - 32px);max-width:440px;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px;background:var(--card,#fff);color:var(--ink,#0f2733);border:1px solid var(--accent,#0f2733);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+    c.textContent = `#baeDrive{position:fixed;left:50%;bottom:max(16px, env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9000;width:calc(100% - 32px);max-width:440px;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px;background:var(--card,#fff);color:var(--ink,#0f2733);border:1px solid var(--accent,#0f2733);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
       #baeDrive span{flex:1;font-size:14px}#baeDrive button:last-child{border:none;background:none;color:var(--muted,#4a5d66);padding:6px 8px}`;
     document.head.appendChild(c);
   }
@@ -222,9 +229,49 @@ function revisarAviso(){
   document.body.appendChild(b);
 }
 oyentes.add(revisarAviso);
+
+/* Indicador en el encabezado de todas las pantallas: al día / sincronizando / cambios sin subir / desconectado */
+const LISTAS = ['bae.presu.lista', 'bae.cli.lista', 'bae.ing.lista', 'bae.inf.lista', 'bae.gas.lista'];
+// cuenta los registros marcados para subir sin interpretar las listas enteras (los informes pueden pesar bastante)
+const pendientes = () => LISTAS.reduce((a, k) => { let t = ''; try{ t = localStorage.getItem(k) || ''; }catch(e){} return a + (t.match(/"_dirty":true/g) || []).length; }, 0);
+const hhmm = t => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+function indicador(){
+  const brand = document.querySelector('header .brand'); if(!brand) return;
+  let el = document.getElementById('baeNube');
+  if(!auth || !auth.email){ if(el) el.remove(); return; }
+  if(!el){
+    if(!document.getElementById('baeNubeCss')){
+      const c = document.createElement('style'); c.id = 'baeNubeCss';
+      c.textContent = `#baeNube{margin-left:auto;flex:none;display:flex;align-items:center;gap:6px;border:1px solid var(--line,#d5e0e5);background:var(--card,#fff);color:var(--muted,#4a5d66);border-radius:999px;padding:5px 10px 5px 8px;font-size:12.5px;cursor:pointer;max-width:46vw}
+        #baeNube svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+        #baeNube span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        #baeNube.ok{color:#0b7a4b;border-color:color-mix(in srgb,#0b7a4b 35%,transparent)}
+        #baeNube.pend{color:#b45309;border-color:color-mix(in srgb,#b45309 40%,transparent)}
+        #baeNube.mal{color:#b42318;border-color:color-mix(in srgb,#b42318 40%,transparent)}
+        #baeNube.gira svg{animation:baeGira 1.2s linear infinite}@keyframes baeGira{to{transform:rotate(360deg)}}`;
+      document.head.appendChild(c);
+    }
+    el = document.createElement('button'); el.type = 'button'; el.id = 'baeNube';
+    el.onclick = () => { if(!tokenOk()) pedirToken(false).then(pulso, () => {}); else pulso(); };
+    brand.appendChild(el);
+  }
+  const p = pendientes(), NUBE = '<path d="M7.5 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.75 4.75 0 0 0 7.5 19z"/>';
+  let cls, txt, ico = NUBE, tit;
+  if(navigator.onLine === false){ cls = p ? 'pend' : ''; txt = p ? `Sin internet · ${p} sin subir` : 'Sin internet'; tit = 'Se sube a Drive cuando vuelva la conexión.'; }
+  else if(!tokenOk()){ cls = 'mal'; txt = p ? `Desconectado · ${p} sin subir` : 'Drive desconectado'; tit = 'Tocá para reconectar Google Drive.'; }
+  else if(enCurso > 0){ cls = 'gira'; txt = 'Sincronizando…'; ico = '<path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/>'; tit = 'Trayendo y subiendo cambios.'; }
+  else if(ultErr){ cls = 'mal'; txt = 'Error al sincronizar'; tit = ultErr + '. Tocá para reintentar.'; }
+  else if(p){ cls = 'pend'; txt = `${p} sin subir`; tit = 'Tocá para sincronizar ahora.'; }
+  else { cls = 'ok'; txt = ultOk ? 'Al día · ' + hhmm(ultOk) : 'Drive conectado'; tit = 'Todo sincronizado con Google Drive. Tocá para sincronizar ahora.'; }
+  el.className = cls; el.title = tit; el.setAttribute('aria-label', txt + '. ' + tit);
+  el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ico}</svg><span>${txt}</span>`;
+}
+oyentes.add(indicador);
+window.addEventListener('storage', indicador);
+setInterval(indicador, 5e3);
 document.addEventListener('visibilitychange', () => { if(visible()){ avisoCerrado = false; pulso(); } });
 window.addEventListener('online', pulso);
-window.addEventListener('offline', revisarAviso);
+window.addEventListener('offline', () => { revisarAviso(); indicador(); });
 setInterval(pulso, 60e3);
 
 /* ---------- selector de archivos de Drive (propio, sin Google Picker: funciona en Brave y no abre ventanas) ---------- */
@@ -331,4 +378,5 @@ window.__nube = {
 };
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pantallaIngreso); else pantallaIngreso();
 if(auth){ cargarGsi().catch(() => {}); setTimeout(revisarAviso, 1500); }
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(indicador, 0)); else setTimeout(indicador, 0);
 })();

@@ -711,9 +711,9 @@ async function pdf(){
   y = 9;
   const L = window.BAE_LOGO; if(L && L.pdfHeader){ try{ L.pdfHeader(doc, MG, y, 14.3); }catch(e){} }
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20);
-  doc.text(pdfSafe(pf.servicio || pf.empresa || ''), PW - MG, y + 3, { align: 'right' });
+  doc.text(pdfSafe(pf.nombre || ''), PW - MG, y + 3, { align: 'right' });   // el nombre de la empresa ya está en el logo
   doc.setFont('helvetica','normal'); doc.setFontSize(8.3); doc.setTextColor(70); let hy = y + 7.4;
-  [pf.nombre, [pf.tituloGas, pf.matGas ? 'Matrícula: ' + pf.matGas : ''].filter(Boolean).join(' - '), pf.contacto].filter(Boolean).forEach(t => { doc.text(pdfSafe(t), PW - MG, hy, { align: 'right' }); hy += 4.2; });
+  [[pf.tituloGas, pf.matGas ? 'Matrícula: ' + pf.matGas : ''].filter(Boolean).join(' - '), pf.contacto].filter(Boolean).forEach(t => { doc.text(pdfSafe(t), PW - MG, hy, { align: 'right' }); hy += 4.2; });
   y = Math.max(y + 17, hy) + 1; doc.setDrawColor(225); doc.line(MG, y, PW - MG, y); y += 3;
   doc.setTextColor(20); doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('Memoria técnica - Instalación interna de gas', MG, y + 8); y += 11;
   doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(100); doc.text(pdfSafe('Cálculo según NAG-200 "Disposiciones y normas mínimas para la ejecución de instalaciones domiciliarias de gas" (ENARGAS)'), MG, y + 3); y += 7;
@@ -854,7 +854,7 @@ window.__gasRender = () => { renderAll(); renderLista(); };
 const alEntrar = () => { if((location.hash || '').replace('#', '') === 'gas'){ renderAll(); renderLista(); sincronizar(false); } };
 window.addEventListener('hashchange', alEntrar);
 if(N && N.onCambio) N.onCambio(() => { if(location.hash === '#gas') sincronizar(false); });
-window.addEventListener('bae:sync', () => { if(location.hash === '#gas') sincronizar(false); });
+window.addEventListener('bae:sync', () => sincronizar(false));   // sincronización automática (nube.js)
 APP.route(); alEntrar();
 
 })();

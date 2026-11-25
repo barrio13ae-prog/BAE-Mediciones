@@ -198,10 +198,11 @@ css.textContent = `
   .pz-etapa.est-rechazado{border-style:dashed}
   .pz-etapa.off{opacity:.45}
   .pz-cobros{display:grid;gap:8px}
-  .pz-cobro{display:grid;grid-template-columns:140px 1fr 1fr 34px;gap:8px;align-items:center}
+  .pz-cobro{display:grid;grid-template-columns:140px 1fr 1fr auto 34px;gap:8px;align-items:center}
+  .pz-cobro .rec{padding:8px 10px;font-size:13.5px}
   .pz-cobro input{margin:0}
   .pz-cobro .del{padding:8px 0}
-  @media (max-width:560px){.pz-cobro{grid-template-columns:1fr 1fr 34px}.pz-cobro input[data-cf="nota"]{grid-column:1 / 3;grid-row:2}}
+  @media (max-width:560px){.pz-cobro{grid-template-columns:1fr 1fr auto}.pz-cobro input[data-cf="nota"]{grid-column:1 / 3;grid-row:2}.pz-cobro .rec{grid-column:3;grid-row:2}.pz-cobro .del{grid-column:3;grid-row:1}}
   .pz-saldo{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
   .pz-saldo div{display:grid;gap:2px;padding:10px 12px;border-radius:10px;background:var(--neutral-bg)}
   .pz-saldo span{font-size:12px;color:var(--muted)}
@@ -362,7 +363,7 @@ function render(){
     <p class="pz-hint" style="margin-top:0">Marcá cada etapa por la que pasó el presupuesto; podés corregir la fecha. Se guarda solo${lista.some(x => x.id === P.id) ? '' : ' (al marcar la primera etapa queda en "Mis presupuestos")'}.</p>
     ${etapasHTML()}
     <h3 class="sub" style="margin:14px 0 6px">Cobros</h3>
-    <div class="pz-cobros">${(P.cobros || []).map((c, i) => `<div class="pz-cobro"><input type="date" data-cob="${i}" data-cf="fecha" value="${esc(c.fecha)}"><input data-cob="${i}" data-cf="monto" value="${esc(c.monto)}" placeholder="Monto" inputmode="numeric"><input data-cob="${i}" data-cf="nota" value="${esc(c.nota)}" placeholder="ej. Anticipo"><button class="del" data-cobdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}</div>
+    <div class="pz-cobros">${(P.cobros || []).map((c, i) => `<div class="pz-cobro"><input type="date" data-cob="${i}" data-cf="fecha" value="${esc(c.fecha)}"><input data-cob="${i}" data-cf="monto" value="${esc(c.monto)}" placeholder="Monto" inputmode="numeric"><input data-cob="${i}" data-cf="nota" value="${esc(c.nota)}" placeholder="ej. Anticipo"><button class="rec" data-recibo="${i}" title="Descargar el recibo de este pago en PDF">Recibo</button><button class="del" data-cobdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}</div>
     <div class="row" style="margin-top:8px"><button id="pzCobAdd">+ Registrar cobro</button></div>
     <div class="pz-saldo"><div><span>Total</span><b>$ ${money(total())}</b></div><div><span>Cobrado</span><b id="pzCobrado">$ ${money(cobrado(P))}</b></div><div><span>Saldo</span><b id="pzSaldo">$ ${money(total() - cobrado(P))}</b></div></div>
     ${ACEPTADO.includes(P.estado) ? '<div class="row" style="margin-top:12px"><button id="pzAInforme">Crear el informe de esta obra →</button></div>' : ''}
@@ -433,6 +434,7 @@ function bind(){
     P.hitos[s] = el.value; seguir(); });
   $$('[data-cob]', v).forEach(el => el.addEventListener('change', persistirCobros));
   $$('[data-cob]', v).forEach(el => el.addEventListener('input', () => { P.cobros[+el.dataset.cob][el.dataset.cf] = el.value; guardarActual(); const sd = $('#pzSaldo', v); if(sd) sd.textContent = '$ ' + money(total() - cobrado(P)); const cb = $('#pzCobrado', v); if(cb) cb.textContent = '$ ' + money(cobrado(P)); }));
+  $$('[data-recibo]', v).forEach(b => b.onclick = () => recibo(+b.dataset.recibo));
   $$('[data-cobdel]', v).forEach(b => b.onclick = () => { P.cobros.splice(+b.dataset.cobdel, 1); guardarActual(); persistirCobros(); render(); document.getElementById('pzSeg').scrollIntoView({ block: 'center' }); });
   const ca = $('#pzCobAdd', v); if(ca) ca.onclick = () => { P.cobros.push({ fecha: isoHoy(), monto: '', nota: P.cobros.length ? 'Pago' : 'Anticipo' }); guardarActual(); render(); const l = $$('[data-cf="monto"]', v).pop(); if(l){ l.scrollIntoView({ block: 'center' }); l.focus(); } };
   const ai = $('#pzAInforme', v); if(ai) ai.onclick = () => { if(window.__informes && window.__informes.nuevoPara){ window.__informes.nuevoPara({ empresa: P.cliente, obra: P.obra, direccion: P.direccion }); location.hash = '#informe'; } };
@@ -513,6 +515,48 @@ function guardar(silencioso){
   if(String(P.cliente).trim()) window.dispatchEvent(new CustomEvent('bae:cliente', { detail: { nombre: P.cliente, telefono: P.telCliente, direccion: P.direccion } }));
 }
 
+/* ---------- recibo de pago (PDF) de un cobro ---------- */
+async function recibo(i){
+  const c = (P.cobros || [])[i];
+  if(!c || !(num(c.monto) > 0)){ msg('Cargá el monto del cobro antes de hacer el recibo.', true); return; }
+  if(!window.jspdf){ msg('No se cargó el generador de PDF. Abrí la app con internet una vez.', true); return; }
+  persistirCobros();
+  const pf = PF(), { jsPDF } = window.jspdf, doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const PW = 210, M = 18, CW = PW - 2 * M, VERDE = [15,39,51], CLARO = [228,236,240], TXT = [25,30,28];
+  let y = 16;
+  const L = window.BAE_LOGO; if(L && L.pdfHeader) L.pdfHeader(doc, M, y, 15.3);
+  doc.setTextColor(...TXT); doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.text(SAFE(pf.nombre || ''), PW - M, y + 4, { align: 'right' });
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); let hy = y + 9;
+  [pf.tel ? 'Teléfono: ' + pf.tel : '', pf.email ? 'Email: ' + pf.email : '', pf.cuit ? 'CUIT/CUIL: ' + fmtCuit(pf.cuit) : ''].filter(Boolean).forEach(t => { doc.text(SAFE(t), PW - M, hy, { align: 'right' }); hy += 4.6; });
+  y = Math.max(y + 26, hy + 6);
+  // número de recibo: el del presupuesto y el orden del cobro
+  const nro = P.numero + '-' + String(i + 1).padStart(2, '0');
+  doc.setFillColor(...VERDE); doc.rect(M, y, CW, 10, 'F'); doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.text(SAFE('RECIBO DE PAGO N° ' + nro), M + 4, y + 6.8); doc.setFontSize(10); doc.text(SAFE('Fecha: ' + fmtD(c.fecha || isoHoy())), PW - M - 4, y + 6.8, { align: 'right' });
+  y += 18; doc.setTextColor(...TXT);
+  const monto = num(c.monto), concepto = String(c.nota || '').trim() || 'Pago';
+  const cuerpo = `Recibí de ${String(P.cliente || '').trim() || '-'} la suma de $ ${money(monto)} (${enPesos(monto)}) en concepto de ${concepto.toLowerCase()} del presupuesto N° ${P.numero}${P.obra ? ' - ' + P.obra : ''}${P.direccion ? ', en ' + P.direccion : ''}.`;
+  doc.setFont('helvetica','normal'); doc.setFontSize(11.5);
+  const ls = doc.splitTextToSize(SAFE(cuerpo), CW); doc.text(ls, M, y); y += ls.length * 6 + 6;
+  // estado de cuenta del presupuesto a la fecha de este cobro
+  const hasta = (P.cobros || []).filter((x, k) => num(x.monto) > 0 && (String(x.fecha || '') < String(c.fecha || '') || (x.fecha === c.fecha && k <= i))).reduce((a, x) => a + num(x.monto), 0);
+  const filas = [['Total del presupuesto', '$ ' + money(total())], ['Este pago', '$ ' + money(monto)], ['Total pagado a la fecha', '$ ' + money(hasta)], ['Saldo pendiente', '$ ' + money(Math.max(0, total() - hasta))]];
+  filas.forEach(([k, val], j) => { const last = j === filas.length - 1;
+    if(last){ doc.setFillColor(...CLARO); doc.rect(M, y, CW, 8, 'F'); }
+    doc.setDrawColor(200); doc.line(M, y + 8, M + CW, y + 8);
+    doc.setFont('helvetica', last || j === 1 ? 'bold' : 'normal'); doc.setFontSize(10.5);
+    doc.text(SAFE(k), M + 3, y + 5.5); doc.text(SAFE(val), PW - M - 3, y + 5.5, { align: 'right' }); y += 8; });
+  y += 30;
+  // firma
+  doc.setDrawColor(60); doc.line(PW - M - 70, y, PW - M, y);
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text(SAFE(pf.nombre || ''), PW - M - 35, y + 5, { align: 'center' });
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text(SAFE(pf.empresa || ''), PW - M - 35, y + 9.5, { align: 'center' });
+  doc.setFontSize(8); doc.setTextColor(110); doc.text(SAFE('Documento no válido como factura.'), M, 285);
+  const name = `Recibo_${nro}_${(P.cliente || 'cliente').replace(/[^\wáéíóúñÁÉÍÓÚÑ]+/g, '_')}.pdf`;
+  const ok = DT.save ? await DT.save(name, doc.output('blob')) : false;
+  msg(ok ? 'Recibo listo: ' + name + '.' : 'No se pudo descargar el recibo.', !ok);
+}
+
 /* ---------- PDF ---------- */
 const SAFE = s => String(s ?? '').replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/Ω/g, 'ohm').replace(/[—–]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[^\x00-\xFF]/g, '');
 async function pdf(envio){
@@ -581,7 +625,7 @@ async function pdf(envio){
   const L = window.BAE_LOGO;
   if(L && L.pdfHeader) L.pdfHeader(doc, M, y, 15.3);
   doc.setTextColor(...TXT); doc.setFont('helvetica','bold'); doc.setFontSize(10.5);
-  doc.text(SAFE(pf.servicio || ''), PW - M, y + 4, { align: 'right' });
+  doc.text(SAFE(pf.nombre || ''), PW - M, y + 4, { align: 'right' });   // el nombre de la empresa ya está en el logo
   doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
   let hy = y + 9;
   const credE = [pf.titulo, pf.matTec ? 'Matrícula: ' + pf.matTec : ''].filter(Boolean).join(' · ');
