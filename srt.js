@@ -27,7 +27,7 @@ css.textContent = `
   nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
   nav.tabs a{font-weight:600;font-size:14px;text-decoration:none;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:20px;padding:6px 14px}
   nav.tabs a.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-  .view{display:grid;gap:18px}
+  .view{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
   .view[hidden]{display:none}
   .home{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
   .fijos{display:grid;gap:8px}

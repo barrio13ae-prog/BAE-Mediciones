@@ -299,6 +299,8 @@ const ACEPT = ['aceptado', 'obra', 'terminado', 'cobrado'];
 /* ---------- ingresos sin presupuesto (emergencias, trabajos sueltos) ---------- */
 const RUBROS = [['elec', 'Electricidad'], ['gas', 'Gas'], ['agua', 'Agua / sanitarios'], ['otro', 'Otros (techos, pintura…)']];
 const TIPOS_ING = [['emergencia', 'Emergencia'], ['suelto', 'Trabajo sin presupuesto']];
+const FORMAS = [['efectivo', 'Efectivo'], ['transferencia', 'Transferencia'], ['otro', 'Otro']];
+const formaTxt = k => (FORMAS.find(f => f[0] === k) || [, ''])[1];
 const rubroTxt = k => ({ elec: 'Electricidad', gas: 'Gas', agua: 'Agua / sanitarios', otro: 'Otros trabajos', ambas: 'Electricidad y gas' })[k] || 'Otros trabajos';
 const tipoTxt = k => (TIPOS_ING.find(t => t[0] === k) || TIPOS_ING[1])[1];
 let ingresos = store.get('bae.ing.lista', []), ingBorr = store.get('bae.ing.borrados', []);
@@ -492,38 +494,57 @@ function ingresosHTML(d){
       <label>Rubro</label>${radios('igRubro', RUBROS, e.rubro)}
       <label>Tipo de trabajo</label>${radios('igTipo', TIPOS_ING, e.tipo)}
       <div class="grid"><label>Cliente (opcional)<input id="igCliente" value="${esc(e.cliente)}" list="dlClientes" placeholder="Nombre"></label>
-        <label>Detalle (opcional)<input id="igDetalle" value="${esc(e.detalle)}" placeholder="ej. Cambio de térmica quemada"></label></div>
-      <div class="row"><button class="primary" id="igGuardar">Guardar ingreso</button><button id="igCancelar">Cancelar</button>${ingresos.some(x => x.id === e.id) ? '<button id="igBorrar">Borrar</button>' : ''}</div>
+        <label>Trabajo realizado (opcional)<input id="igDetalle" value="${esc(e.detalle)}" placeholder="ej. Cambio de térmica quemada"></label></div>
+      <div class="grid"><label>Dirección (opcional)<input id="igDir" value="${esc(e.direccion)}" placeholder="Dónde se hizo el trabajo"></label>
+        <div><label>Forma de pago</label>${radios('igForma', FORMAS, e.forma)}</div></div>
+      <div class="row"><button class="primary" id="igGuardar">Guardar ingreso</button><button id="igRecibo" title="Guarda el ingreso y descarga un recibo en PDF para entregarle al cliente">${e.nroRecibo ? 'Guardar y descargar recibo' : 'Guardar y hacer recibo'}</button><button id="igCancelar">Cancelar</button>${ingresos.some(x => x.id === e.id) ? '<button id="igBorrar">Borrar</button>' : ''}</div>
       <div class="msg" id="igMsg"></div></div>` : '';
   return `<section class="card" id="rsIng"><div class="cl-top"><h2>Ingresos sin presupuesto</h2>${e ? '' : '<button class="primary" id="igNuevo">+ Registrar ingreso</button>'}</div>
     <p class="cl-hint" style="margin-top:0">Emergencias y trabajos que cobraste sin presupuesto de por medio.${d.nEmerg ? ` Este mes: ${d.nEmerg} emergencia${d.nEmerg === 1 ? '' : 's'}.` : ''}</p>
     ${ingSinc ? `<p class="cl-hint">☁ ${esc(ingSinc)}</p>` : ''}
     ${form}
-    ${lst.length ? `<div class="rs-pend">${lst.map(x => `<a href="#resumen" data-ig="${x.id}"><span><b>${esc(x.cliente || x.detalle || tipoTxt(x.tipo))}</b> · ${fmtD(x.fecha)}<br><small>${esc(rubroTxt(x.rubro))} · ${esc(tipoTxt(x.tipo))}${x.cliente && x.detalle ? ' · ' + esc(x.detalle) : ''}</small></span><b>$ ${money(num(x.monto))}</b></a>`).join('')}</div>`
-      : e ? '' : `<p class="cl-hint">No hay ingresos sin presupuesto en ${mesTxt(mesSel)}.</p>`}</section>`;
+    ${lst.length ? `<div class="rs-pend">${lst.map(x => `<a href="#resumen" data-ig="${x.id}"><span><b>${esc(x.cliente || x.detalle || tipoTxt(x.tipo))}</b> · ${fmtD(x.fecha)}<br><small>${esc(rubroTxt(x.rubro))} · ${esc(tipoTxt(x.tipo))}${x.cliente && x.detalle ? ' · ' + esc(x.detalle) : ''}${x.nroRecibo ? ' · Recibo N° ' + esc(x.nroRecibo) : ''}</small></span><b>$ ${money(num(x.monto))}</b></a>`).join('')}</div>`
+      : e ? '' : `<p class="cl-hint">No hay ingresos sin presupuesto en ${mesTxt(mesSel)}.</p>`}<div class="msg" id="igAviso"></div></section>`;
 }
 function bindIngresos(){
   const nuevo = $('#igNuevo', vRes);
   if(nuevo) nuevo.onclick = () => {
-    ingEdit = { id: 'i' + Date.now(), fecha: mesSel === hoyISO().slice(0, 7) ? hoyISO() : mesSel + '-01', monto: '', rubro: 'elec', tipo: 'emergencia', cliente: '', detalle: '' };
+    ingEdit = { id: 'i' + Date.now(), fecha: mesSel === hoyISO().slice(0, 7) ? hoyISO() : mesSel + '-01', monto: '', rubro: 'elec', tipo: 'emergencia', cliente: '', detalle: '', direccion: '', forma: 'efectivo' };
     renderResumen(); const m = $('#igMonto', vRes); if(m){ m.scrollIntoView({ block: 'center' }); m.focus(); }
   };
   $$('[data-ig]', vRes).forEach(a => a.onclick = ev => { ev.preventDefault(); const x = ingresos.find(y => y.id === a.dataset.ig); if(!x) return;
     ingEdit = JSON.parse(JSON.stringify(x)); renderResumen(); const f = $('.rs-ing-form', vRes); if(f) f.scrollIntoView({ block: 'center' }); });
   if(!ingEdit) return;
-  const leer = () => { ingEdit.fecha = $('#igFecha', vRes).value; ingEdit.monto = $('#igMonto', vRes).value; ingEdit.cliente = $('#igCliente', vRes).value.trim(); ingEdit.detalle = $('#igDetalle', vRes).value.trim(); };
-  $$('input[name="igRubro"], input[name="igTipo"]', vRes).forEach(r => r.onchange = () => { leer(); ingEdit[r.name === 'igRubro' ? 'rubro' : 'tipo'] = r.value; renderResumen(); });
+  const leer = () => { ingEdit.fecha = $('#igFecha', vRes).value; ingEdit.monto = $('#igMonto', vRes).value; ingEdit.cliente = $('#igCliente', vRes).value.trim(); ingEdit.detalle = $('#igDetalle', vRes).value.trim(); ingEdit.direccion = $('#igDir', vRes).value.trim(); };
+  $$('input[name="igRubro"], input[name="igTipo"], input[name="igForma"]', vRes).forEach(r => r.onchange = () => { leer(); ingEdit[{ igRubro: 'rubro', igTipo: 'tipo', igForma: 'forma' }[r.name]] = r.value; renderResumen(); });
   const err = t => { const m = $('#igMsg', vRes); m.textContent = t; m.classList.add('err'); };
-  $('#igGuardar', vRes).onclick = () => {
+  const guardarIngreso = async conRecibo => {
     leer();
     if(!ingEdit.fecha) return err('Poné la fecha del cobro.');
     if(!(num(ingEdit.monto) > 0)) return err('Poné el monto cobrado.');
+    if(conRecibo && !ingEdit.cliente) return err('Poné el nombre del cliente para el recibo.');
+    if(conRecibo && !(window.__presu && window.__presu.reciboPdf)) return err('No está disponible el generador de recibos.');
+    // número de recibo: R-AAAAMM-NN, correlativo dentro del mes (queda guardado en el ingreso)
+    if(conRecibo && !ingEdit.nroRecibo){
+      const pre = 'R-' + ingEdit.fecha.slice(0, 7).replace('-', '') + '-';
+      const n = Math.max(0, ...ingresos.map(x => String(x.nroRecibo || '')).filter(t => t.startsWith(pre)).map(t => parseInt(t.slice(pre.length), 10) || 0)) + 1;
+      ingEdit.nroRecibo = pre + String(n).padStart(2, '0');
+    }
     const rec = Object.assign({}, ingEdit, { _mod: Date.now(), _dirty: true }), i = ingresos.findIndex(x => x.id === rec.id);
     if(i >= 0){ rec._driveId = ingresos[i]._driveId; ingresos[i] = rec; } else ingresos.push(rec);
     guardarIng();
-    if(rec.cliente) window.dispatchEvent(new CustomEvent('bae:cliente', { detail: { nombre: rec.cliente } }));
+    if(rec.cliente) window.dispatchEvent(new CustomEvent('bae:cliente', { detail: { nombre: rec.cliente, direccion: rec.direccion } }));
     mesSel = rec.fecha.slice(0, 7); ingEdit = null; renderResumen(); sincronizarIng(true);
+    if(conRecibo){
+      const detalle = rec.detalle || '', rub = rubroTxt(rec.rubro).toLowerCase();
+      let ok = false;
+      try{ ok = await window.__presu.reciboPdf({ nro: rec.nroRecibo, fecha: rec.fecha, cliente: rec.cliente, monto: num(rec.monto), forma: ({ efectivo: 'en efectivo', transferencia: 'por transferencia' })[rec.forma] || '',
+        concepto: rec.tipo === 'emergencia' ? `servicio de emergencia (${rub})` : `trabajos de ${rub}`, detalle, direccion: rec.direccion }); }catch(e){}
+      const m = $('#igAviso', vRes); if(m){ m.textContent = ok ? `Recibo N° ${rec.nroRecibo} descargado.` : 'No se pudo generar el recibo. Abrí la app con internet una vez.'; m.classList.toggle('err', !ok); m.scrollIntoView({ block: 'center' }); }
+    }
   };
+  $('#igGuardar', vRes).onclick = () => guardarIngreso(false);
+  $('#igRecibo', vRes).onclick = () => guardarIngreso(true);
   $('#igCancelar', vRes).onclick = () => { ingEdit = null; renderResumen(); };
   const bb = $('#igBorrar', vRes); if(bb) bb.onclick = () => {
     if(bb.dataset.ok !== '1'){ bb.dataset.ok = '1'; bb.textContent = '¿Seguro? Tocá de nuevo'; return; }

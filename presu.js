@@ -516,11 +516,10 @@ function guardar(silencioso){
 }
 
 /* ---------- recibo de pago (PDF) de un cobro ---------- */
-async function recibo(i){
-  const c = (P.cobros || [])[i];
-  if(!c || !(num(c.monto) > 0)){ msg('Cargá el monto del cobro antes de hacer el recibo.', true); return; }
-  if(!window.jspdf){ msg('No se cargó el generador de PDF. Abrí la app con internet una vez.', true); return; }
-  persistirCobros();
+/* Recibo de pago en PDF. Lo usan los cobros de un presupuesto y los ingresos sin presupuesto (Resumen).
+   o = { nro, fecha, cliente, monto, concepto, forma, detalle, direccion, filas: [[texto, valor]], resaltar: [índices] } → true si se descargó */
+async function reciboPdf(o){
+  if(!window.jspdf) throw new Error('nopdf');
   const pf = PF(), { jsPDF } = window.jspdf, doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = 210, M = 18, CW = PW - 2 * M, VERDE = [15,39,51], CLARO = [228,236,240], TXT = [25,30,28];
   let y = 16;
@@ -529,22 +528,23 @@ async function recibo(i){
   doc.setFont('helvetica','normal'); doc.setFontSize(9.5); let hy = y + 9;
   [pf.tel ? 'Teléfono: ' + pf.tel : '', pf.email ? 'Email: ' + pf.email : '', pf.cuit ? 'CUIT/CUIL: ' + fmtCuit(pf.cuit) : ''].filter(Boolean).forEach(t => { doc.text(SAFE(t), PW - M, hy, { align: 'right' }); hy += 4.6; });
   y = Math.max(y + 26, hy + 6);
-  // número de recibo: el del presupuesto y el orden del cobro
-  const nro = P.numero + '-' + String(i + 1).padStart(2, '0');
   doc.setFillColor(...VERDE); doc.rect(M, y, CW, 10, 'F'); doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(13);
-  doc.text(SAFE('RECIBO DE PAGO N° ' + nro), M + 4, y + 6.8); doc.setFontSize(10); doc.text(SAFE('Fecha: ' + fmtD(c.fecha || isoHoy())), PW - M - 4, y + 6.8, { align: 'right' });
+  doc.text(SAFE('RECIBO DE PAGO N° ' + o.nro), M + 4, y + 6.8); doc.setFontSize(10); doc.text(SAFE('Fecha: ' + fmtD(o.fecha || isoHoy())), PW - M - 4, y + 6.8, { align: 'right' });
   y += 18; doc.setTextColor(...TXT);
-  const monto = num(c.monto), concepto = String(c.nota || '').trim() || 'Pago';
-  const cuerpo = `Recibí de ${String(P.cliente || '').trim() || '-'} la suma de $ ${money(monto)} (${enPesos(monto)}) en concepto de ${concepto.toLowerCase()} del presupuesto N° ${P.numero}${P.obra ? ' - ' + P.obra : ''}${P.direccion ? ', en ' + P.direccion : ''}.`;
+  const monto = num(o.monto);
+  const cuerpo = `Recibí de ${String(o.cliente || '').trim() || '-'} la suma de $ ${money(monto)} (${enPesos(monto)})${o.forma ? ', abonada ' + o.forma : ''}, en concepto de ${o.concepto}.`;
   doc.setFont('helvetica','normal'); doc.setFontSize(11.5);
-  const ls = doc.splitTextToSize(SAFE(cuerpo), CW); doc.text(ls, M, y); y += ls.length * 6 + 6;
-  // estado de cuenta del presupuesto a la fecha de este cobro
-  const hasta = (P.cobros || []).filter((x, k) => num(x.monto) > 0 && (String(x.fecha || '') < String(c.fecha || '') || (x.fecha === c.fecha && k <= i))).reduce((a, x) => a + num(x.monto), 0);
-  const filas = [['Total del presupuesto', '$ ' + money(total())], ['Este pago', '$ ' + money(monto)], ['Total pagado a la fecha', '$ ' + money(hasta)], ['Saldo pendiente', '$ ' + money(Math.max(0, total() - hasta))]];
-  filas.forEach(([k, val], j) => { const last = j === filas.length - 1;
+  const ls = doc.splitTextToSize(SAFE(cuerpo), CW); doc.text(ls, M, y); y += ls.length * 6 + 4;
+  // trabajo realizado (ingresos sin presupuesto): queda como constancia del trabajo
+  if(o.detalle || o.direccion){
+    const tx = [o.detalle ? 'Trabajo realizado: ' + o.detalle : '', o.direccion ? 'Lugar: ' + o.direccion : ''].filter(Boolean).map(t => doc.splitTextToSize(SAFE(t), CW - 8)).flat();
+    doc.setFillColor(246,247,249); doc.rect(M, y, CW, tx.length * 5.4 + 6, 'F'); doc.setFontSize(10.5); doc.text(tx, M + 4, y + 6.5); y += tx.length * 5.4 + 12;
+  } else y += 2;
+  const filas = o.filas || [['Importe recibido', '$ ' + money(monto)]], res = o.resaltar || [filas.length - 1];
+  filas.forEach(([k, val], j) => { const fuerte = res.includes(j), last = j === filas.length - 1;
     if(last){ doc.setFillColor(...CLARO); doc.rect(M, y, CW, 8, 'F'); }
     doc.setDrawColor(200); doc.line(M, y + 8, M + CW, y + 8);
-    doc.setFont('helvetica', last || j === 1 ? 'bold' : 'normal'); doc.setFontSize(10.5);
+    doc.setFont('helvetica', fuerte ? 'bold' : 'normal'); doc.setFontSize(10.5);
     doc.text(SAFE(k), M + 3, y + 5.5); doc.text(SAFE(val), PW - M - 3, y + 5.5, { align: 'right' }); y += 8; });
   y += 30;
   // firma
@@ -552,9 +552,24 @@ async function recibo(i){
   doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text(SAFE(pf.nombre || ''), PW - M - 35, y + 5, { align: 'center' });
   doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text(SAFE(pf.empresa || ''), PW - M - 35, y + 9.5, { align: 'center' });
   doc.setFontSize(8); doc.setTextColor(110); doc.text(SAFE('Documento no válido como factura.'), M, 285);
-  const name = `Recibo_${nro}_${(P.cliente || 'cliente').replace(/[^\wáéíóúñÁÉÍÓÚÑ]+/g, '_')}.pdf`;
-  const ok = DT.save ? await DT.save(name, doc.output('blob')) : false;
-  msg(ok ? 'Recibo listo: ' + name + '.' : 'No se pudo descargar el recibo.', !ok);
+  const name = `Recibo_${o.nro}_${(o.cliente || 'cliente').replace(/[^\wáéíóúñÁÉÍÓÚÑ]+/g, '_')}.pdf`;
+  return DT.save ? DT.save(name, doc.output('blob')) : false;
+}
+/* recibo de un cobro del presupuesto abierto */
+async function recibo(i){
+  const c = (P.cobros || [])[i];
+  if(!c || !(num(c.monto) > 0)){ msg('Cargá el monto del cobro antes de hacer el recibo.', true); return; }
+  if(!window.jspdf){ msg('No se cargó el generador de PDF. Abrí la app con internet una vez.', true); return; }
+  persistirCobros();
+  const monto = num(c.monto), concepto = (String(c.nota || '').trim() || 'pago').toLowerCase();
+  // estado de cuenta del presupuesto a la fecha de este cobro
+  const hasta = (P.cobros || []).filter((x, k) => num(x.monto) > 0 && (String(x.fecha || '') < String(c.fecha || '') || (x.fecha === c.fecha && k <= i))).reduce((a, x) => a + num(x.monto), 0);
+  const nro = P.numero + '-' + String(i + 1).padStart(2, '0');   // el del presupuesto y el orden del cobro
+  const ok = await reciboPdf({ nro, fecha: c.fecha, cliente: P.cliente, monto,
+    concepto: `${concepto} del presupuesto N° ${P.numero}${P.obra ? ' - ' + P.obra : ''}${P.direccion ? ', en ' + P.direccion : ''}`,
+    filas: [['Total del presupuesto', '$ ' + money(total())], ['Este pago', '$ ' + money(monto)], ['Total pagado a la fecha', '$ ' + money(hasta)], ['Saldo pendiente', '$ ' + money(Math.max(0, total() - hasta))]],
+    resaltar: [1, 3] });
+  msg(ok ? 'Recibo N° ' + nro + ' listo.' : 'No se pudo descargar el recibo.', !ok);
 }
 
 /* ---------- PDF ---------- */
@@ -841,7 +856,7 @@ if(N){
     if(e.target.id === 'pzSalir'){ e.preventDefault(); N.salir(); location.reload(); }
   });
 }
-window.__presu = { letras, enPesos, get P(){ return P; }, set P(x){ P = normHitos(x); guardarActual(); render(); }, get precios(){ return precios; }, pdf, get lista(){ return lista; }, cobrado, waLink, sincronizar,
+window.__presu = { letras, enPesos, reciboPdf, get P(){ return P; }, set P(x){ P = normHitos(x); guardarActual(); render(); }, get precios(){ return precios; }, pdf, get lista(){ return lista; }, cobrado, waLink, sincronizar,
   nuevoPara(c){ P = nuevo(); P.cliente = c.nombre || ''; P.telCliente = c.telefono || ''; P.direccion = [c.direccion, c.localidad].filter(Boolean).join(', '); guardarActual(); render(); } };
 render();
 APP.route();

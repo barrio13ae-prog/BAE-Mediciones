@@ -29,7 +29,9 @@
   header{padding:22px 20px 8px;max-width:1100px;margin:0 auto}
   h1{font-size:22px;margin:0 0 4px}
   header p{margin:0;color:var(--muted)}
-  main{max-width:1100px;margin:0 auto;padding:12px 20px 60px;display:grid;gap:18px}
+  main{max-width:1100px;margin:0 auto;padding:12px 20px 60px;display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+  /* las columnas no se estiran más que la pantalla por un contenido ancho (tablas, campos) */
+  main > *, .view > *{min-width:0}
   section.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
   section.card h2{font-size:16px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
   .step{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:700}
@@ -1169,11 +1171,11 @@ window.__dt = { state, save, isRcd, rcdVals, xval, num, renderAll, handleFiles, 
 </script>
 <script src="logo.js?v=3"></script>
 <script src="nube.js?v=9"></script>
-<script src="srt.js?v=21"></script>
+<script src="srt.js?v=22"></script>
 <script src="precios-ref.js?v=1"></script>
-<script src="presu.js?v=25"></script>
+<script src="presu.js?v=26"></script>
 <script src="informes.js?v=12"></script>
-<script src="clientes.js?v=9"></script>
+<script src="clientes.js?v=10"></script>
 <script src="calc.js?v=1"></script>
 <script src="gas.js?v=6"></script>
 <script>
